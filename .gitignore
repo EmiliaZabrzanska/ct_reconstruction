@@ -1,0 +1,81 @@
+# ==============================
+# DATA (Never commit real data)
+# ==============================
+data/*
+!data/debug_subset/
+!data/README.md
+
+# ==============================
+# RESULTS & CHECKPOINTS
+# ==============================
+results/*
+!results/.gitkeep
+
+*.pt
+*.ckpt
+*.pth
+*.onnx
+
+# ==============================
+# LOGS
+# ==============================
+logs/
+*.log
+slurm-*.out
+
+# ==============================
+# PYTHON
+# ==============================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.env
+.venv/
+venv/
+*.egg-info/
+
+# ==============================
+# OS
+# ==============================
+.DS_Store
+
+# ==============================
+# LATEX BUILD FILES
+# ==============================
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.synctex.gz
+report/*.blg
+report/*.bbl
+report/*.fls
+report/*.fdb_latexmk
+report/*.lof
+report/*.lot
+
+# ==============================
+# JUPYTER
+# ==============================
+.ipynb_checkpoints/
+
+# ==============================
+# HIDDEN CACHE
+# ==============================
+.cache/
+
+# ==============================
+# FIGURES (generated, not source)
+# ==============================
+figures/*
+!figures/.gitkeep
+
+# ==============================
+# DATA ARCHIVES
+# ==============================
+*.tar.gz
+*.zip
+*.h5
+*.hdf5
