@@ -1,0 +1,20 @@
+name: ct_recon
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
+  - numpy
+  - scipy
+  - matplotlib
+  - tqdm
+  - ipykernel
+  - pytest
+  - pip
+  - pip:
+    - git+https://github.com/ahendriksen/tomosipo.git

@@ -1,0 +1,443 @@
+% ============================================================
+%  Chapter 3: Related Work
+% ============================================================
+%
+% AIM: Position TFPnP within the broader landscape of CT reconstruction.
+%      This is NOT just a literature summary -- it is a critical analysis
+%      that shows you understand why TFPnP exists, what it improves upon,
+%      and what its limitations are. ~8-10 pages.
+%
+% CONTENTS:
+%   3.1 Classical Iterative Methods (brief, pointing back to Ch.2)
+%   3.2 Variational Regularisation (Tikhonov, TV, sparsity)
+%   3.3 Proximal Algorithms (prox operator, FISTA, ADMM)
+%   3.4 Plug-and-Play Methods (PnP insight, variants, parameter tuning problem)
+%   3.5 Algorithm Unrolling and LPD
+%   3.6 Deep Learning for CT (FBPconv, RED-CNN, RPGD, LPD)
+%   3.7 TFPnP (contributions, RL formulation, innovations, results,
+%       comparison, assumptions/limitations, gaps)
+%
+% FIGURES:
+%   - Fig 3.1: PnP-ADMM schematic (draw your OWN version in TikZ)
+%   - Table 3.1: Sparse-view CT PSNR comparison (Table 5 from paper)
+%
+% TIPS:
+%   - Section 3.7 should be the longest -- this is YOUR paper
+%   - The "Assumptions and Limitations" subsection shows independent thinking
+% ============================================================
+
+\chapter{Related Work}
+\label{chap:related-work}
+
+This chapter positions the paper at the centre of this project---\emph{TFPnP: Tuning-free
+Plug-and-Play Proximal Algorithms with Applications to Inverse Imaging Problems}
+\citep{Wei2022TFPnP}---within the broader landscape of CT reconstruction methods. We
+trace the intellectual lineage from classical iterative methods through variational
+regularisation and plug-and-play frameworks to the deep learning methods against which
+TFPnP is benchmarked. We then provide a detailed technical and critical analysis of the
+paper itself.
+
+% -----------------------------------------------------------
+\section{Classical Iterative Methods}
+\label{sec:classical-iterative}
+% -----------------------------------------------------------
+
+As described in \cref{sec:classical-reconstruction}, iterative methods such as SIRT,
+ART (Algebraic Reconstruction Technique) \citep{Gordon1970}, and CGLS (Conjugate
+Gradient Least Squares) minimise the data-fidelity term
+$\frac{1}{2}\|A\bm{x}-\bm{y}\|_2^2$ without an explicit regulariser. Their convergence
+properties are well understood, but they are limited by the ill-posedness of the inverse
+problem: without regularisation, they overfit to noise given sufficiently many iterations.
+Early stopping acts as an implicit regulariser, introducing a trade-off between data
+consistency and noise suppression that is difficult to tune automatically.
+
+% -----------------------------------------------------------
+\section{Variational Regularisation}
+\label{sec:variational}
+% -----------------------------------------------------------
+
+Variational methods frame reconstruction as a regularised optimisation problem:
+\begin{equation}
+    \hat{\bm{x}} = \arg\min_{\bm{x}}\; D(\bm{y}, A\bm{x}) + \lambda R(\bm{x}),
+    \label{eq:variational}
+\end{equation}
+where $D$ is a data-fidelity term (e.g., $\frac{1}{2}\|\cdot\|_2^2$ for Gaussian noise,
+or a Kullback--Leibler divergence for Poisson noise) and $R$ is a regulariser that
+encodes prior knowledge about $\bm{x}$. The parameter $\lambda > 0$ controls the
+trade-off between data fit and regularity. A rich hierarchy of regularisers has been
+studied \citep{Benning2018}:
+
+\begin{itemize}
+    \item \textbf{Tikhonov regularisation} \citep{TikhonovArsenin1977}:
+          $R(\bm{x}) = \frac{1}{2}\|\bm{x}\|_2^2$. Penalises energy; yields smooth
+          solutions; closed-form inversion via $(A^TA + \lambda I)^{-1}A^T\bm{y}$.
+    \item \textbf{Total variation} \citep{RudinOsherFatemi1992}:
+          $R(\bm{x}) = \|\nabla\bm{x}\|_1$. Promotes piecewise-constant images;
+          well-suited to CT; solved by PDHG or ADMM.
+    \item \textbf{Sparsity-promoting regularisers}: Wavelet $\ell^1$ penalties
+          \citep{Mallat1989}, dictionary learning \citep{Mairal2009}, and low-rank
+          regularisation \citep{Fazel2001}.
+\end{itemize}
+
+The key limitation of all explicit regularisers is that their functional forms embody
+strong modelling assumptions---piecewise constancy for TV, wavelet sparsity for wavelet
+penalties---that may not hold for complex anatomical structures. Furthermore, $\lambda$
+must be chosen per-problem, a process that is non-trivial in clinical practice.
+
+% -----------------------------------------------------------
+\section{Proximal Algorithms}
+\label{sec:proximal-algorithms}
+% -----------------------------------------------------------
+
+When $R$ is non-smooth (as for TV), standard gradient descent cannot be applied.
+\emph{Proximal algorithms} decompose the composite minimisation into subproblems
+involving the \emph{proximal operator} \citep{Moreau1962,Parikh2014}:
+\begin{equation}
+    \operatorname{Prox}_{\gamma R}(\bm{v})
+        = \arg\min_{\bm{x}}\;\gamma R(\bm{x}) + \frac{1}{2}\|\bm{x}-\bm{v}\|_2^2.
+    \label{eq:prox}
+\end{equation}
+For many regularisers, \eqref{eq:prox} has a closed-form solution (e.g.,
+soft-thresholding for $R = \|\cdot\|_1$).
+
+\paragraph{Proximal gradient descent (Forward--Backward splitting).}
+When $D$ is smooth with $L$-Lipschitz gradient and $R$ is non-smooth, the iterates are:
+\begin{equation}
+    \bm{x}^{k+1} = \operatorname{Prox}_{\gamma R}\!\left(\bm{x}^k - \gamma \nabla D(\bm{x}^k)\right).
+\end{equation}
+FISTA \citep{BeckTeboulle2009} adds Nesterov momentum to achieve $\mathcal{O}(1/k^2)$
+convergence.
+
+\paragraph{ADMM.}
+When both $D$ and $R$ are non-smooth, the Alternating Direction Method of Multipliers
+(ADMM) \citep{GabayMercier1976,Boyd2011} introduces an auxiliary variable $\bm{z}$ to
+decouple $D$ and $R$:
+\begin{align}
+    \bm{x}^{k+1} &= \operatorname{Prox}_{\sigma^2 R}(\bm{z}^k - \bm{u}^k),
+        \label{eq:admm-x}\\
+    \bm{z}^{k+1} &= \operatorname{Prox}_{\frac{1}{\mu}D}(\bm{x}^{k+1} + \bm{u}^k),
+        \label{eq:admm-z}\\
+    \bm{u}^{k+1} &= \bm{u}^k + \bm{x}^{k+1} - \bm{z}^{k+1},
+        \label{eq:admm-u}
+\end{align}
+where $\mu > 0$ is a penalty parameter and $\sigma^2 = \lambda/\mu$. ADMM alternates
+between an image-domain regularisation update~\eqref{eq:admm-x}, a
+data-consistency update~\eqref{eq:admm-z}, and a dual variable
+update~\eqref{eq:admm-u}.
+
+% -----------------------------------------------------------
+\section{Plug-and-Play (PnP) Methods}
+\label{sec:pnp}
+% -----------------------------------------------------------
+
+The \emph{Plug-and-Play} (PnP) framework \citep{Venkatakrishnan2013} is the immediate
+precursor to TFPnP and deserves careful treatment.
+
+\subsection{The PnP Insight}
+
+The $\bm{x}$-update in ADMM~\eqref{eq:admm-x} is precisely the proximal operator of
+$R$ applied to $\bm{z}^k - \bm{u}^k$. By~\eqref{eq:prox}, this is equivalent to a
+denoising problem: given a noisy observation $\bm{v} = \bm{z}^k - \bm{u}^k$, find the
+image that minimises $\sigma^2 R(\bm{x}) + \frac{1}{2}\|\bm{x}-\bm{v}\|_2^2$. The PnP
+insight is to replace this proximal step with \emph{any} off-the-shelf denoiser
+$\mathcal{H}_\sigma$, regardless of whether it corresponds to an explicit $R$:
+\begin{equation}
+    \bm{x}^{k+1} = \mathcal{H}_{\sigma_k}(\bm{z}^k - \bm{u}^k).
+    \label{eq:pnp-admm-x}
+\end{equation}
+The resulting \emph{PnP-ADMM} scheme is:
+\begin{align}
+    \bm{x}^{k+1} &= \mathcal{H}_{\sigma_k}(\bm{z}^k - \bm{u}^k), \label{eq:pnpadmm1}\\
+    \bm{z}^{k+1} &= \operatorname{Prox}_{\frac{1}{\mu_k}D}(\bm{x}^{k+1} + \bm{u}^k),
+        \label{eq:pnpadmm2}\\
+    \bm{u}^{k+1} &= \bm{u}^k + \bm{x}^{k+1} - \bm{z}^{k+1}. \label{eq:pnpadmm3}
+\end{align}
+This framework decouples the forward model (handled in the $\bm{z}$-step) from the
+image prior (handled via the denoiser in the $\bm{x}$-step), allowing state-of-the-art
+denoisers---BM3D \citep{Dabov2007}, NLM, or deep CNN denoisers such as DnCNN
+\citep{Zhang2017DnCNN}---to be swapped in without retraining for each new inverse
+problem.
+
+% TODO: Add Figure 3.1 here -- PnP-ADMM schematic
+% Draw your OWN version in TikZ. Do NOT copy the paper's figure.
+
+\subsection{PnP Variants and Extensions}
+
+The body of PnP literature extends the framework in several directions
+\citep{Wei2022TFPnP}:
+
+\begin{itemize}
+    \item \textbf{Proximal algorithms.} PnP has been combined with ADMM
+          \citep{Venkatakrishnan2013}, half-quadratic splitting (HQS)
+          \citep{Zhang2017IRCNN}, proximal gradient (PnP-PGM) \citep{Sun2019online},
+          accelerated proximal gradient (PnP-APGM) \citep{Kamilov2017}, and their
+          stochastic variants.
+    \item \textbf{Regularisation by Denoising (RED).} \citet{Romano2017} proposed an
+          explicit regulariser $R(\bm{x}) = \frac{1}{2}\bm{x}^T\!(\bm{x} -
+          \mathcal{H}_\sigma(\bm{x}))$ whose gradient $\nabla R(\bm{x}) = \bm{x} -
+          \mathcal{H}_\sigma(\bm{x})$ is the denoising residual, enabling gradient-based
+          optimisation.
+    \item \textbf{Denoising-based AMP (D-AMP).} \citet{Metzler2016} adapts the
+          Approximate Message Passing framework by replacing its thresholding step with
+          a deep denoiser, exploiting the Onsager correction to track effective noise
+          statistics.
+    \item \textbf{Theoretical convergence.} Convergence of PnP algorithms is challenging
+          to prove because denoisers do not generally correspond to the proximal operator
+          of any convex function. Progress has been made under assumptions of bounded or
+          firmly non-expansive denoisers \citep{Ryu2019}.
+\end{itemize}
+
+\subsection{The Parameter Tuning Problem}
+
+Despite their empirical success, PnP algorithms suffer a fundamental practical
+limitation: their performance is highly sensitive to the choice of internal
+parameters---principally the denoising strength $\sigma_k$ at each iteration, the
+penalty parameter $\mu_k$, and the termination time $\tau$. As demonstrated in
+Figure~1 of \citet{Wei2022TFPnP}, the optimal PSNR for each image in a dataset occurs
+at a \emph{different} parameter setting, and sometimes even requires early stopping to
+avoid quality degradation. No single fixed parameter schedule achieves uniformly good
+performance across images with varying noise levels and content. This
+\emph{manual tuning problem} is the precise gap that TFPnP is designed to fill.
+
+% -----------------------------------------------------------
+\section{Algorithm Unrolling and Learned Primal Dual}
+\label{sec:lpd}
+% -----------------------------------------------------------
+
+\emph{Algorithm unrolling} \citep{GregorLeCun2010} is a complementary paradigm that
+unrolls a fixed number of optimisation iterations into a deep neural network, replacing
+hand-crafted components with learned ones and training the entire unrolled system
+end-to-end. Learned Primal Dual (LPD) \citep{AdlerOktem2018} is the leading
+algorithm-unrolling method for CT reconstruction and the primary benchmark against
+which TFPnP is compared.
+
+LPD replaces the proximal operators of a primal-dual algorithm with small CNNs:
+\begin{align}
+    h^{k+1} &= \Gamma^k_\phi\!\left(h^k,\; A\bm{x}^k,\; \bm{y}\right), \\
+    g^{k+1} &= \Lambda^k_\theta\!\left(g^k,\; A^T h^{k+1}\right),\\
+    \bm{x}^{k+1} &= \bm{x}^k + g^{k+1},
+\end{align}
+where $\Gamma^k_\phi$ and $\Lambda^k_\theta$ are small CNNs (with unshared weights
+across iterations) operating in measurement space and image space respectively, and
+$h^k, g^k$ are running memory variables. The network is trained end-to-end by
+minimising $\|\bm{x}^K - \bm{x}^*\|_2^2$ over paired training data $(\bm{y}, \bm{x}^*)$.
+
+LPD is state-of-the-art in supervised CT reconstruction performance, achieving
+22.72/22.95/22.50\,dB PSNR at the three noise levels in the TFPnP benchmark
+\citep{Wei2022TFPnP}. However, it requires a separate trained model for each acquisition
+geometry and noise level; it cannot generalise across measurement conditions without
+retraining, unlike PnP methods.
+
+% -----------------------------------------------------------
+\section{Deep Learning for CT Reconstruction}
+\label{sec:dl-ct}
+% -----------------------------------------------------------
+
+The broader field of deep learning for CT reconstruction can be taxonomised along two axes:
+(i) the degree to which the forward model $A$ is incorporated into the architecture, and
+(ii) whether the method is supervised or unsupervised. The benchmarks used in the TFPnP
+CT experiments \citep{Wei2022TFPnP} span this taxonomy:
+
+\begin{itemize}
+    \item \textbf{FBP + post-processing (FBPconv)} \citep{Jin2017}: applies FBP to
+          produce an initial reconstruction, then trains a CNN to remove artefacts in
+          image space. Fast but does not enforce data consistency. Achieves 22.16\,dB.
+    \item \textbf{RED-CNN} \citep{Chen2017RED}: a CNN trained in image space using
+          residual learning to denoise low-dose CT reconstructions. Achieves 22.34\,dB.
+          Does not use the forward model during inference.
+    \item \textbf{RPGD} \citep{Gupta2018}: combines projected gradient descent
+          steps (using $A$ and $A^T$) with a CNN denoiser trained as a proximal
+          operator. Enforces data consistency; achieves 23.19\,dB.
+    \item \textbf{LPD} \citep{AdlerOktem2018}: as described in \cref{sec:lpd};
+          achieves 22.72\,dB.
+\end{itemize}
+
+% -----------------------------------------------------------
+\section{TFPnP: Tuning-free Plug-and-Play Proximal Algorithm}
+\label{sec:tfpnp}
+% -----------------------------------------------------------
+
+\subsection{Paper Overview and Positioning}
+
+The paper ``TFPnP: Tuning-free Plug-and-Play Proximal Algorithms with Applications to
+Inverse Imaging Problems'' \citep{Wei2022TFPnP} was published in the \emph{Journal of
+Machine Learning Research} (Volume~23, 2022) by Kaixuan Wei, Angelica Aviles-Rivero,
+Jingwei Liang, Ying Fu, Hua Huang, and Carola-Bibiane Sch\"{o}nlieb. It extends a
+conference paper at ICML 2020 \citep{Wei2020a}.
+
+The paper sits at the intersection of three traditions: PnP methods (exploiting the
+modular separation of forward model and denoiser prior), reinforcement learning (used
+as the optimisation engine for parameter search), and inverse imaging (validated on
+CS-MRI, sparse-view CT, single-photon imaging, and phase retrieval). Its core thesis is
+that the internal parameter selection in PnP algorithms---previously treated as manual
+hyperparameters or governed by handcrafted heuristics---can be framed as a
+\emph{sequential decision-making problem} and solved by a learned policy network.
+
+\subsection{Main Contributions}
+
+The paper makes three principal contributions \citep{Wei2022TFPnP}:
+
+\begin{enumerate}
+    \item \textbf{The TFPnP framework.} A class of PnP algorithms in which the parameter
+          selection (denoising strength $\sigma_k$, penalty $\mu_k$, and termination time
+          $\tau$) is governed by a learned policy $\pi$, rather than fixed or handcrafted
+          schedules. The framework is generic: it is instantiated for PnP-ADMM, PnP-HQS,
+          PnP-PGM, PnP-APGM, RED-ADMM, and D-AMP.
+    \item \textbf{A mixed model-free and model-based RL algorithm.} The policy network
+          has two sub-policies: a stochastic sub-policy $\pi_1$ for the discrete
+          termination decision (stop or continue), trained with model-free policy
+          gradients; and a deterministic sub-policy $\pi_2$ for the continuous parameters
+          ($\sigma_k$, $\mu_k$), trained via model-based backpropagation through the
+          differentiable PnP-ADMM iterations.
+    \item \textbf{Extensive empirical validation.} State-of-the-art results on CS-MRI,
+          sparse-view CT, single-photon imaging, and phase retrieval, with ablations of
+          the denoiser prior choice, policy design, and hyperparameter sensitivity.
+\end{enumerate}
+
+\subsection{Technical Details: The RL Formulation}
+
+The TFPnP algorithm is built on a Markov Decision Process (MDP) formulation
+$(S, A, p, r)$ \citep{Wei2022TFPnP}:
+
+\begin{itemize}
+    \item \textbf{State space $\mathcal{S}$.} The current optimisation state
+          $s^k = (\bm{x}^k, \bm{z}^k, \bm{u}^k)$, augmented with scalars encoding the
+          noise level and the iteration count.
+    \item \textbf{Action space $\mathcal{A}$.} Actions are pairs $(a_1, a_2)$ where
+          $a_1 \in \{0, 1\}$ is the termination decision and
+          $a_2 = (\sigma_k, \mu_k)$ are the continuous parameters.
+    \item \textbf{Transition function $p$.} Defined by $m$ consecutive PnP-ADMM
+          iterations; differentiable with respect to the U-Net denoiser
+          \citep{Ronneberger2015}.
+    \item \textbf{Reward function $r$.} A scalar measuring image quality improvement
+          relative to the previous state, encouraging policies that reach high-quality
+          reconstructions efficiently and terminate at the optimal iteration.
+\end{itemize}
+
+The objective is:
+\begin{equation}
+    J(\pi)
+        = \mathbb{E}_{s^0 \sim \mathcal{S}_0,\, \mathcal{T} \sim \pi}\!\left[R_0\right],
+    \label{eq:rl-objective}
+\end{equation}
+where $R_0 = \sum_{t'=0}^{N-1} \rho^{t'} r(s^{t+t'}, a^{t+t'})$ is the discounted
+return and $\rho \in [0,1]$ is a discount factor. The policy and value networks are
+trained jointly: the value network $V^\pi_\phi$ minimises the Bellman residual, while
+$\pi_1$ is trained via the REINFORCE policy gradient theorem and $\pi_2$ is trained via
+deterministic policy gradient through the differentiable environment.
+
+\subsection{Key Innovations}
+
+\paragraph{Joint optimisation of discrete and continuous parameters.}
+Prior automated parameter selection methods (L-curve \citep{Hansen1992}, generalised
+cross-validation, Stein's unbiased risk estimator) targeted a single fixed parameter
+for all iterations. TFPnP produces a \emph{schedule} of parameters adapting to the
+current optimisation state.
+
+\paragraph{Model-based gradient estimation for continuous parameters.}
+Using the differentiable U-Net denoiser, TFPnP backpropagates through the PnP
+iterations to compute the exact gradient of the return with respect to $(\sigma_k,
+\mu_k)$. This model-based gradient has far lower variance than Monte Carlo estimates,
+substantially accelerating training of the continuous sub-policy.
+
+\paragraph{Generalisation across imaging conditions.}
+Because the policy encodes the noise level and iteration count as auxiliary inputs, a
+\emph{single} trained policy generalises across different noise levels and undersampling
+factors---a property that supervised end-to-end methods such as LPD lack by design.
+
+\paragraph{Early stopping as a first-class decision.}
+TFPnP treats the termination time as a learnable decision, allowing the policy to stop
+as soon as further iterations would degrade quality due to noise overfitting. This
+is a critical robustness property.
+
+\subsection{Experimental Results: Sparse-View CT}
+
+The CT benchmark uses 30-view parallel-beam projections (a $24\times$ dosage reduction
+relative to the 720-view standard \citep{Jin2017,Gupta2018}) with Gaussian noise at
+three levels. Results are reported in \cref{tab:ct-results} \citep{Wei2022TFPnP}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Sparse-view CT PSNR (dB) comparison across all methods. TFPnP achieves the
+             best result at every noise level. Data from \citet{Wei2022TFPnP}, Table~5.}
+    \label{tab:ct-results}
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Method} & \textbf{5\%} & \textbf{7.5\%} & \textbf{10\%} \\
+        \midrule
+        FBP \citep{Herman2009}          & 18.37 & 16.16 & 14.32 \\
+        TV \citep{SidkyPan2008}         & 21.47 & 19.17 & 16.95 \\
+        FBPconv \citep{Jin2017}         & 23.00 & 22.94 & 22.86 \\
+        RED-CNN \citep{Chen2017RED}     & 23.45 & 23.11 & 22.71 \\
+        LPD \citep{AdlerOktem2018}      & 23.86 & 23.44 & 23.00 \\
+        RPGD \citep{Gupta2018}          & 24.29 & 23.82 & 23.38 \\
+        \midrule
+        \textbf{TFPnP (Ours)}           & \textbf{24.50} & \textbf{24.23} & \textbf{23.72} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+TFPnP achieves the best results at all noise levels, outperforming the second-best
+method (RPGD) by 0.21--0.34\,dB consistently across noise levels, suggesting the
+learned policy adapts effectively to varying signal-to-noise conditions.
+
+\subsection{Comparison to Prior Work}
+
+\paragraph{vs.\ classical PnP.}
+Classical PnP-ADMM with a fixed parameter schedule (e.g., the IRCNN handcrafted
+schedule of \citet{Zhang2017IRCNN}) achieves sub-optimal PSNR because no single
+schedule serves all images. TFPnP demonstrates that the learned policy reaches results
+close to the \emph{oracle policy}---one that has access to the ground truth to set
+parameters---without any ground truth at test time.
+
+\paragraph{vs.\ supervised deep learning (LPD, RED-CNN, FBPconv).}
+Supervised methods require \emph{paired} training data and produce a fixed function from
+sinogram to image. TFPnP's denoiser can be trained on image-space patches (unpaired
+with sinograms) and the RL policy is trained separately; this modular training is both
+more data-efficient and more interpretable. TFPnP also inherits data consistency from
+the $\bm{z}$-step~\eqref{eq:pnpadmm2}, whereas image-domain methods (RED-CNN,
+FBPconv) do not enforce $\|A\bm{x} - \bm{y}\|_2 \leq \varepsilon$.
+
+\paragraph{vs.\ algorithm unrolling (LPD).}
+Both methods incorporate the forward operator $A$ during inference. The key difference
+is that LPD's number of unrolled iterations is fixed at training time; TFPnP's
+termination time is adaptive and learned. Additionally, TFPnP's policy can adapt to
+unseen noise levels, whereas LPD requires retraining for each new acquisition condition.
+
+\subsection{Assumptions and Limitations}
+
+A critical reading of TFPnP reveals several important assumptions and gaps:
+
+\begin{enumerate}
+    \item \textbf{Gaussian denoiser mismatch.} The PnP denoiser $\mathcal{H}_\sigma$ is
+          trained for Gaussian noise, but the \emph{iteration noise}
+          $\varepsilon^k = \bar{\bm{x}}^k - \bm{x}^*$ is not Gaussian in early
+          iterations. The paper shows empirically that iteration noise becomes
+          increasingly Gaussian as iterations proceed, and that PnP-ADMM achieves the
+          best Gaussianisation ($R^2 = 0.972$)---partially justifying the choice, but
+          not eliminating the mismatch.
+    \item \textbf{CT geometry limitation.} The TFPnP paper uses TorchRadon
+          \citep{Ronchetti2020} with a simplified 30-view parallel-beam geometry.
+          Generalisation to clinical cone-beam geometries is a gap that the present
+          project, using LION/tomosipo \citep{Biguri2016TIGRE,Hendriksen2021tomosipo},
+          is positioned to address.
+    \item \textbf{Training cost.} Training the RL policy is substantially more expensive
+          than training a supervised network, as it requires differentiating through many
+          PnP iterations. Training times are not reported, making reproducibility
+          assessment difficult.
+    \item \textbf{No convergence guarantee for the full system.} While convergence of
+          PnP-ADMM under certain denoiser conditions is established
+          \citep{Ryu2019,Sun2021}, the addition of a learned adaptive policy breaks the
+          assumptions of existing proofs. TFPnP is validated empirically, not
+          theoretically.
+    \item \textbf{2D only.} All CT experiments are 2D (slice-by-slice), without
+          addressing volumetric 3D reconstruction.
+\end{enumerate}
+
+\subsection{What the Paper Does Not Claim}
+
+TFPnP is presented as a \emph{generic algorithmic framework}, not a CT-specific method.
+The paper does not claim optimality for any specific CT geometry beyond the 30-view
+parallel-beam benchmark, demonstrate clinical applicability on patient data, or address
+3D reconstruction. These are the precise gaps that the present implementation project
+is directly positioned to investigate.

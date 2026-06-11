@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools", "wheel", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ct_tfpnp"
+dynamic = ["version"]
+description = "TFPnP reproduction for sparse-view CT reconstruction."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Emilia Zabrzanska", email = "eaz21@cam.ac.uk" },
+]
+keywords = ["computed-tomography", "inverse-problems", "plug-and-play", "reinforcement-learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+    "numpy",
+    "torch",
+    "matplotlib",
+    "scipy",
+    "tqdm",
+]
+
+[project.urls]
+"Source" = "https://gitlab.developers.cam.ac.uk/phy/data-intensive-science-mphil/assessments/projects/eaz21"
+
+[tool.setuptools_scm]
+write_to = "src/ct_tfpnp/version.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]

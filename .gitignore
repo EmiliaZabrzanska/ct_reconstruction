@@ -69,8 +69,9 @@ report/*.lot
 # ==============================
 # FIGURES (generated, not source)
 # ==============================
-figures/*
-!figures/.gitkeep
+
+#figures/*
+#!figures/.gitkeep
 
 # ==============================
 # DATA ARCHIVES

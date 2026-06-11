@@ -1,0 +1,206 @@
+% ============================================================
+%  Chapter 4: Design and Implementation
+% ============================================================
+%
+% AIM: Describe HOW you built the system. A reader should be able to
+%      reproduce your work from this chapter alone. ~6-8 pages.
+%
+% CONTENTS:
+%   4.1 Software Framework (Why LION, Why tomosipo, operator abstraction)
+%   4.2 Dataset Pipeline (which dataset, preprocessing, splits)
+%   4.3 Model Architecture (denoiser U-Net, policy network, value network)
+%   4.4 Training Procedure (denoiser pre-training, RL loop, losses, hardware)
+%   4.5 Baseline Implementations (FBP, TV, SIRT, LPD)
+%
+% FIGURES:
+%   - Fig 4.1: System architecture diagram [TikZ]
+%   - Fig 4.2: U-Net denoiser architecture
+%   - Fig 4.3: Policy network architecture
+%   - Fig 4.4: Training curve (reward vs episode) [generate during training]
+%
+% TIPS:
+%   - Include code snippets where they clarify
+%   - Be specific about dimensions, channels, hyperparameters
+%   - Write this AS you implement, not after
+%   - Mention any deviations from the original paper and why
+% ============================================================
+
+\chapter{Design and Implementation}
+\label{chap:implementation}
+
+% -----------------------------------------------------------
+\section{Software Framework}
+\label{sec:software-framework}
+% -----------------------------------------------------------
+
+\subsection{Why LION?}
+
+LION (\emph{Learned Iterative Optimisation Networks}) is an open-source Python toolbox
+developed by the Cambridge Computational Imaging (CIA) group at DAMTP, available at
+\url{https://github.com/CambridgeCIA/LION} \citep{Biguri2016TIGRE}. LION was chosen as
+the implementation framework for this project for several reasons:
+
+\begin{itemize}
+    \item \textbf{Integrated CT pipeline.} LION provides end-to-end infrastructure for
+          CT reconstruction research: dataset loading (including the Mayo Clinic Low Dose
+          CT Grand Challenge dataset \citep{MayoClinic}), geometry configuration, sinogram
+          simulation, classical reconstruction baselines (FBP/FDK, SIRT, TV), and learned
+          reconstruction model training loops.
+    \item \textbf{PyTorch native.} LION is built on PyTorch, allowing seamless integration
+          of differentiable components---a prerequisite for the model-based RL training in
+          TFPnP \citep{Wei2022TFPnP}, which requires backpropagation through the PnP
+          iterations.
+    \item \textbf{Modular solver architecture.} LION's \texttt{Solver} abstraction
+          separates the optimisation loop from the model definition, making it
+          straightforward to implement a custom TFPnP training loop alongside the existing
+          \texttt{SupervisedSolver} used by LPD \citep{AdlerOktem2018}.
+    \item \textbf{TIGRE/tomosipo integration.} LION uses tomosipo and TIGRE under the
+          hood, providing cone-beam CT operators not available in TorchRadon (which the
+          original TFPnP paper used).
+\end{itemize}
+
+\subsection{Why Tomosipo?}
+
+Tomosipo \citep{Hendriksen2021tomosipo} is a Python library for defining CT acquisition
+geometries and computing forward/back-projection operators via GPU-accelerated ASTRA
+Toolbox backends. Its role in this project is:
+
+\begin{itemize}
+    \item \textbf{Geometry abstraction.} A clean API for specifying parallel-beam and
+          cone-beam scan geometries:
+          \begin{verbatim}
+import tomosipo as ts
+vg = ts.volume(shape=(1, 256, 256))
+pg = ts.parallel(angles=30, shape=(1, 256))
+A  = ts.operator(vg, pg)
+          \end{verbatim}
+
+    \item \textbf{Operator abstraction.} The resulting \texttt{A} object implements
+          $\bm{x} \mapsto A\bm{x}$ (forward projection) and $\bm{y} \mapsto A^T\bm{y}$
+          (backprojection) as callable functions.
+
+    \item \textbf{Differentiability.} Via \texttt{ts\_algorithms}, the projectors can be
+          wrapped in PyTorch's autograd framework.
+
+    \item \textbf{Consistency with the paper's geometry.} The TFPnP paper uses a 30-view
+          parallel-beam geometry with 182 detector pixels. Tomosipo can replicate this
+          exactly.
+\end{itemize}
+
+\subsection{Operator Abstraction}
+
+At the core of the CT pipeline is the system operator pair $(A, A^T)$. In LION/tomosipo,
+these are implemented via the ASTRA Toolbox's CUDA-accelerated routines. The forward
+projection $\bm{y} = A\bm{x}$ simulates the physical measurement process described in
+\cref{sec:ct-basics}. The backprojection $A^T\bm{y}$ distributes each sinogram value
+back along its ray into the image volume.
+
+\subsection{Forward and Backprojection Implementation}
+
+For the $\bm{z}$-step of ADMM with quadratic data fidelity
+$D(\bm{y}, A\bm{x}) = \frac{1}{2}\|A\bm{x} - \bm{y}\|_2^2$, the proximal operator
+has the closed-form solution:
+\begin{equation}
+    \operatorname{Prox}_{\frac{1}{\mu}D}(\bm{v})
+        = \left(\mu A^T A + I\right)^{-1}\!\left(\mu A^T \bm{y} + \bm{v}\right),
+    \label{eq:data-prox}
+\end{equation}
+which requires an iterative solver. In the TFPnP implementation \citep{Wei2022TFPnP},
+a single gradient step is used as a tractable approximation:
+\begin{equation}
+    \bm{z}^{k+1} \approx \bm{v} - \frac{1}{\mu} A^T\!\left(A\bm{v} - \bm{y}\right),
+    \label{eq:data-grad-step}
+\end{equation}
+where $\bm{v} = \bm{x}^{k+1} + \bm{u}^k$. This is implemented as two tomosipo operator
+calls and is fully differentiable.
+
+\subsection{Tomosipo Exploration and Validation}
+\label{sec:tomosipo-exploration}
+
+% AIM: Justify WHY you did a hands-on tomosipo exploration before
+% implementing TFPnP, and explain what each experiment taught you.
+% This maps to Ander's Milestone 1: "Can you define a geometry,
+% forward project an arbitrary image, add noise, and reconstruct?"
+
+Before implementing TFPnP, a systematic exploration of tomosipo was carried out
+(documented in \texttt{notebooks/01\_tomosipo\_fundamentals.ipynb}) to build
+operational understanding of the CT simulation pipeline. This step was essential for
+two reasons: first, the TFPnP paper uses TorchRadon \citep{Ronchetti2020} as its CT
+backend, whereas this project uses tomosipo/ASTRA; verifying that the same physical
+operations (forward projection, backprojection, noise simulation) behave equivalently
+in the new backend is a prerequisite for a valid reproduction. Second, every component
+of the TFPnP algorithm---the data-consistency $\bm{z}$-step~\eqref{eq:data-grad-step},
+the reward function, and the training loop---depends on correct and efficient use of
+$A$ and $A^T$, so fluency with the operator interface is necessary before writing any
+model code.
+
+The exploration proceeded in three stages:
+
+\paragraph{Stage 1: Geometry and operator fundamentals.}
+Cone-beam and parallel-beam geometries were defined and compared. Cone-beam geometry
+(\texttt{ts.cone}) was used initially for general 3D exploration, as it represents the
+most common clinical CT configuration and exercises the full tomosipo API. The
+exploration then moved to 2D parallel-beam geometry (\texttt{ts.parallel} with a
+single detector row), which matches the TFPnP experimental setup: 30 projection angles
+over an $N \times N$ image with $N$ detector pixels. The distinction matters because
+parallel-beam projections are shift-invariant (enabling analytical FBP inversion via
+the Central Slice Theorem), whereas cone-beam projections are not, requiring the FDK
+approximation \citep{Feldkamp1984}. All subsequent project experiments use parallel-beam
+geometry to maintain consistency with the reference paper.
+
+\paragraph{Stage 2: SIRT implementation from scratch.}
+The SIRT algorithm was implemented manually using the tomosipo operator interface,
+following the update rule from \cref{sec:classical-reconstruction}. This served two
+purposes: (i)~it verified that the forward operator $A$ and its adjoint $A^T$ behave
+correctly (the reconstruction converges to the ground truth for noiseless, fully sampled
+data); and (ii)~it confirmed that the GPU-accelerated PyTorch path through tomosipo
+produces identical results to the NumPy path, which is important since TFPnP training
+requires GPU tensors throughout. The manual implementation was validated against
+\texttt{ts\_algorithms.sirt} and ASTRA's internal \texttt{SIRT3D\_CUDA}, with negligible
+differences in all cases.
+
+\paragraph{Stage 3: Noise simulation and baseline reconstruction.}
+Gaussian noise at the three levels used in the TFPnP paper ($\sigma \in \{5\%, 7.5\%,
+10\%\}$) was added to sparse-view (30-angle) sinograms. Four reconstruction algorithms
+were then compared: FBP (via \texttt{tsa.fbp}), SIRT, Nesterov-accelerated least squares
+(NAG\_LS), and TV minimisation (via \texttt{tsa.tv\_min2d}). PSNR and SSIM were computed
+for each, establishing the baseline performance landscape against which TFPnP will be
+evaluated. The key observations were: (i)~FBP from 30 views produces severe streak
+artefacts and low PSNR, confirming the ill-posedness described in
+\cref{sec:ill-posedness}; (ii)~TV minimisation substantially outperforms unregularised
+methods but introduces staircase artefacts; (iii)~the quantitative gap between TV and
+the TFPnP results reported in \cref{tab:ct-results} defines the improvement that a
+learned method must achieve. These baseline reconstructions also serve as the reference
+images for the qualitative comparison figures in \cref{chap:results}.
+
+
+% -----------------------------------------------------------
+\section{Dataset Pipeline}
+\label{sec:dataset-pipeline}
+% -----------------------------------------------------------
+
+% TODO: Fill in once you have decided on dataset and implemented loading.
+
+
+% -----------------------------------------------------------
+\section{Model Architecture}
+\label{sec:model-architecture}
+% -----------------------------------------------------------
+
+% TODO: Fill in once you have implemented the model.
+
+
+% -----------------------------------------------------------
+\section{Training Procedure}
+\label{sec:training-procedure}
+% -----------------------------------------------------------
+
+% TODO: Fill in during/after training.
+
+
+% -----------------------------------------------------------
+\section{Baseline Implementations}
+\label{sec:baselines}
+% -----------------------------------------------------------
+
+% TODO: Describe how you ran the baselines.

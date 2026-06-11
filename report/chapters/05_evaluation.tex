@@ -1,0 +1,100 @@
+% ============================================================
+%  Chapter 5: Evaluation
+% ============================================================
+%
+% AIM: Present your experimental results clearly and analyse them
+%      critically. ~6-8 pages.
+%
+% CONTENTS:
+%   5.1 Experimental Setup (dataset, geometry, noise, hardware, hyperparams)
+%   5.2 Baseline Comparison (FBP, TV, SIRT vs paper's baselines)
+%   5.3 Quantitative Metrics (PSNR, SSIM table -- your results vs paper)
+%   5.4 Qualitative Analysis (reconstruction grids, difference maps, zoom-ins)
+%   5.5 Ablation Studies (if time: iterations, denoiser choice, policy viz)
+%   5.6 Discussion (how close to paper, what explains gaps, what you'd change)
+%
+% FIGURES (this chapter should be figure-heavy):
+%   - Table 5.1: Main quantitative results (PSNR, SSIM)
+%   - Fig 5.1: Reconstruction grid (GT, FBP, TV, TFPnP) for 2-3 images
+%   - Fig 5.2: Difference maps
+%   - Fig 5.3: PSNR vs noise level plot
+%   - Fig 5.4: Learned parameter schedules (sigma_k, mu_k vs iteration)
+%   - Fig 5.5: Convergence: PSNR vs iteration for fixed vs learned policy
+%
+% TIPS:
+%   - Every figure must be referenced and discussed in the text
+%   - Be honest -- if results don't match the paper, explain why
+%   - Quantitative first, then qualitative to support the numbers
+% ============================================================
+
+\chapter{Evaluation}
+\label{chap:results}
+
+% -----------------------------------------------------------
+\section{Experimental Setup}
+\label{sec:experimental-setup}
+% -----------------------------------------------------------
+
+% TODO: Describe your exact experimental configuration.
+
+
+% -----------------------------------------------------------
+\section{Baseline Comparison}
+\label{sec:baseline-comparison}
+% -----------------------------------------------------------
+
+% TODO: Report your baseline results (FBP, TV, SIRT).
+
+
+% -----------------------------------------------------------
+\section{Quantitative Metrics}
+\label{sec:quantitative-metrics}
+% -----------------------------------------------------------
+
+% TODO: Main results table and analysis.
+
+% Template:
+% \begin{table}[htbp]
+%     \centering
+%     \caption{Quantitative comparison. PSNR (dB) / SSIM on test set.}
+%     \label{tab:main-results}
+%     \begin{tabular}{lcccccc}
+%         \toprule
+%         & \multicolumn{2}{c}{\textbf{5\% noise}}
+%         & \multicolumn{2}{c}{\textbf{7.5\% noise}}
+%         & \multicolumn{2}{c}{\textbf{10\% noise}} \\
+%         \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+%         \textbf{Method} & PSNR & SSIM & PSNR & SSIM & PSNR & SSIM \\
+%         \midrule
+%         FBP     & -- & -- & -- & -- & -- & -- \\
+%         TV      & -- & -- & -- & -- & -- & -- \\
+%         TFPnP   & -- & -- & -- & -- & -- & -- \\
+%         \midrule
+%         TFPnP (paper) & 24.50 & -- & 24.23 & -- & 23.72 & -- \\
+%         \bottomrule
+%     \end{tabular}
+% \end{table}
+
+
+% -----------------------------------------------------------
+\section{Qualitative Analysis}
+\label{sec:qualitative-analysis}
+% -----------------------------------------------------------
+
+% TODO: Reconstruction grids, difference maps, zoom-ins.
+
+
+% -----------------------------------------------------------
+\section{Ablation Studies}
+\label{sec:ablations}
+% -----------------------------------------------------------
+
+% TODO: If time permits.
+
+
+% -----------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+% -----------------------------------------------------------
+
+% TODO: Critical analysis.

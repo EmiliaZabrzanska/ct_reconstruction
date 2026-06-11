@@ -1,0 +1,248 @@
+% Masters Project Report Template
+% Adapted for Emilia Zabrzanska – MPhil in Data Intensive Science
+
+\documentclass[12pt,a4paper,twoside]{report}
+% append option ",openright" after "twoside" if you prefer each chapter
+% to start on a recto (odd-numbered) page in a double-sided printout
+
+\usepackage[pdfborder={0 0 0}]{hyperref}  % turns references into hyperlinks
+\usepackage[vmargin=20mm,hmargin=25mm]{geometry}  % adjust page margins
+\usepackage{graphicx} % allows inclusion of PDF, PNG and JPG images
+\usepackage{parskip}  % separate paragraphs with vertical space
+                      % instead of indenting their first line
+\usepackage{setspace} % for \onehalfspacing
+\usepackage{refcount} % for counting pages
+\usepackage{upquote}  % for correct quotation marks in verbatim text
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsthm}
+\usepackage{bm}
+\usepackage{natbib}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{cleveref}
+\usepackage{gensymb}
+\newtheorem{remark}{Remark}[chapter]
+
+\newif\ifsubmission % Boolean flag for distinguishing submitted/final version
+
+% ---------- PROJECT DETAILS ----------
+\title{CT Reconstruction with Learned Priors for Low-Dose Imaging}
+\author{Emilia Zabrzanska}
+\date{July 2026}
+\newcommand{\candidatenumber}{1234N}
+\newcommand{\college}{Magdalene College}
+\newcommand{\coursethe}{Master of Philosophy in Data Intensive Science}
+
+% Uncomment for anonymous submission:
+% \submissiontrue
+
+\begin{document}
+
+% =========================
+% COVER PAGE
+% =========================
+
+\begin{sffamily} % use a sans-serif font for the pro-forma cover sheet
+
+\begin{titlepage}
+\makeatletter
+
+% University logo with shield hanging in left margin
+\hspace*{-14mm}\includegraphics[width=65mm]{logo-dcst-colour}
+
+\ifsubmission
+
+% submission proforma cover page for blind marking
+\begin{Large}
+\vspace{20mm}
+Research project report title page
+
+\vspace{35mm}
+Candidate \candidatenumber
+
+\vspace{42mm}
+\textsl{``\@title''}
+
+\end{Large}
+
+\else
+
+% regular cover page
+\begin{center}
+\Huge
+\vspace{\fill}
+
+\@title
+\vspace{\fill}
+
+\@author
+\vspace{10mm}
+
+\Large
+\college
+\vspace{\fill}
+
+\@date
+\vspace{\fill}
+
+\end{center}
+
+\fi
+
+\vspace{\fill}
+\begin{center}
+Submitted in partial fulfillment of the requirements for the\\
+\coursethe
+\end{center}
+
+\makeatother
+\end{titlepage}
+
+\newpage
+
+Total page count: \pageref{lastpage}
+
+% calculate number of pages from
+% \label{firstcontentpage} to \label{lastcontentpage} inclusive
+\makeatletter
+\@tempcnta=\getpagerefnumber{lastcontentpage}\relax%
+\advance\@tempcnta by -\getpagerefnumber{firstcontentpage}%
+\advance\@tempcnta by 1%
+\xdef\contentpages{\the\@tempcnta}%
+\makeatother
+
+Main chapters (excluding front-matter, references and appendix):
+\contentpages~pages
+(pp~\pageref{firstcontentpage}--\pageref{lastcontentpage})
+
+Main chapters word count: 0 % <-- UPDATE AFTER FINAL WORDCOUNT
+
+Methodology used to generate that word count:
+
+[For example:
+
+\begin{quote}
+\begin{verbatim}
+$ make wordcount
+gs -q -dSAFER -sDEVICE=txtwrite -o - \
+   -dFirstPage=6 -dLastPage=11 report-submission.pdf | \
+egrep '[A-Za-z]{3}' | wc -w
+467
+\end{verbatim}
+\end{quote}
+
+]
+
+\end{sffamily}
+
+% =========================
+% DECLARATION
+% =========================
+
+\vspace{\fill}
+\onehalfspacing
+\textbf{\Huge Declaration}
+\vspace{40pt}
+
+I,
+\makeatletter\ifsubmission
+\candidatenumber,
+\else
+\@author\ of \college,
+\fi\makeatother
+being a candidate for \coursethe, hereby declare that this report
+and the work described in it are my own work, unaided except as
+may be specified below, and that the report does not contain
+material that has already been used to any substantial extent
+for a comparable purpose.
+
+In preparation of this report, I adhered to the
+\href{https://www.cst.cam.ac.uk/files/ai_policy.pdf}{Department of
+Computer Science and Technology AI Policy}. [The project required
+the approved use of \{insert name of technology\} and such use is
+acknowledged in the text at the relevant sections.]
+
+\ifsubmission\else
+\bigskip
+\textbf{Signed:}
+\fi
+
+\bigskip
+\textbf{Date:}
+\vspace{\fill}
+
+% =========================
+% ABSTRACT
+% =========================
+
+\chapter*{Abstract}
+
+% Replace with your abstract
+This project investigates learned priors for low-dose computed
+tomography reconstruction, with particular focus on stability,
+regularisation behaviour, and quantitative performance relative
+to classical reconstruction approaches.
+
+\ifsubmission\else
+\chapter*{Acknowledgements}
+
+Optional acknowledgements go here.
+
+\fi
+
+\cleardoublepage
+
+% =========================
+% TABLE OF CONTENTS
+% =========================
+
+\tableofcontents
+% \listoffigures
+% \listoftables
+
+\cleardoublepage
+
+% =========================
+% MAIN CHAPTERS
+% =========================
+
+\label{firstcontentpage}
+\input{chapters/01_introduction}
+\input{chapters/02_background}
+\input{chapters/03_related_work}
+\input{chapters/04_design_and_implementation}
+\input{chapters/05_evaluation}
+\input{chapters/06_conclusion}
+
+\label{lastcontentpage}
+
+% =========================
+% BIBLIOGRAPHY
+% =========================
+
+\bibliographystyle{plainnat}
+\bibliography{bibliography}
+
+% =========================
+% APPENDIX
+% =========================
+
+\appendix
+
+\chapter{Additional Technical Details}
+\input{chapters/appendix}
+
+\label{lastpage}
+
+\end{document}
+
+% Example figure inclusion (uncomment and replace with your own figures)
+%\begin{figure}[ht]
+%    \centering
+%    \includegraphics[width=0.8\textwidth]{figures/example_plot.pdf}
+%    \caption{Quantitative comparison of reconstruction performance.}
+%    \label{fig:performance}
+%\end{figure}
