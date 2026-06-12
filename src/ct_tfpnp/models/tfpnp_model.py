@@ -48,8 +48,8 @@ class TFPnPModel(LIONmodel):
             in_channels=5,
             m=5,
             sigma_min=1.0,
-            sigma_max=5.0,      # was 50.0
-            mu_min=10.0,        # was 0.01
+            sigma_max=5.0,
+            mu_min=10.0,
             mu_max=100.0,
             critic_base_channels=64,
             critic_n_blocks=8,

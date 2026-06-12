@@ -41,8 +41,8 @@ class ResNetActor_ADMM(nn.Module):
         self,
         in_channels: int = 5,
         n_action_steps: int = 5,
-        sigma_range: tuple = (1.0, 50.0),
-        mu_range: tuple = (0.01, 1.0),
+        sigma_range: tuple = (1.0, 5.0),     # DRUNet-calibrated (was paper's [1, 50])
+        mu_range: tuple = (10.0, 100.0),     # LION-native µ scale (was paper's [0.01, 1.0])
     ):
         super().__init__()
         self.n_action_steps = n_action_steps

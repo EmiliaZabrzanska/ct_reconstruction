@@ -138,4 +138,3 @@ class DRUNetDenoiser(nn.Module):
 
 
 # Backward compatibility
-UNetDenoiser2D = DRUNetDenoiser

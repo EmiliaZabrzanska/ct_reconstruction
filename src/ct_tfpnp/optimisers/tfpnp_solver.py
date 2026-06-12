@@ -188,6 +188,8 @@ class TFPnPSolver(LIONsolver):
                 print(f"  Mean PSNR: {mean_psnr:.2f} dB | "
                       f"Buffer: {len(self.replay_buffer)}")
 
+        self._save_metrics_history()
+
         return mean_psnr
 
     def validate(self, val_images, n_images=30):
@@ -241,6 +243,47 @@ class TFPnPSolver(LIONsolver):
 
         self.model.train()
         return float(np.mean(val_psnrs))
+    
+    def _save_metrics_history(self):
+        """
+        Dump train_log to JSON for post-hoc plotting via plot_training_curves.py.
+        Called at the end of every epoch so a killed job still leaves usable data.
+        """
+        import json
+
+        # Convert defaultdict values (which can be lists or scalars) to plain lists
+        metrics = {k: list(v) if hasattr(v, '__iter__') else [v]
+                for k, v in self.train_log.items()}
+
+        # Convenience: derive epoch index alongside epoch-level series
+        n_epochs = len(self.train_log.get('epoch_psnr', []))
+        if n_epochs > 0:
+            metrics['epoch'] = list(range(1, n_epochs + 1))
+
+        # Snapshot config for reproducibility
+        sp = self.solver_params
+        metrics['config'] = {
+            'm': sp.m,
+            'N': sp.N,
+            'eta': sp.eta,
+            'gamma': sp.gamma,
+            'target_ema': sp.target_ema,
+            'n_grad_steps': sp.n_grad_steps,
+            'batch_size': sp.batch_size,
+            'pi2_batch_size': sp.pi2_batch_size,
+            'buffer_size': sp.buffer_size,
+            'noise_std': sp.noise_std,
+            'lr_critic': sp.lr_critic,
+            'lr_pi2': sp.lr_pi2,
+            'pi2_loss_scale': sp.pi2_loss_scale,
+            'pi2_warmup_epochs': sp.pi2_warmup_epochs,
+            'best_val_psnr': float(self.best_val_psnr),
+        }
+
+        path = self.save_folder / "metrics_history.json"
+        with open(path, "w") as f:
+            json.dump(metrics, f, indent=2)
+
 
     def _update_networks(self, enable_pi2=True):
         """

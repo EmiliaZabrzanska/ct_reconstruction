@@ -3,12 +3,7 @@
 import torch
 import torch.nn.functional as F
 
-
-def _to_4d(t, device=None):
-    """Convert (1,H,W) → (1,1,H,W) and optionally move to device."""
-    if device is not None:
-        t = t.to(device)
-    return t.unsqueeze(0) if t.dim() == 3 else t
+from ct_tfpnp.utils import to_4d
 
 
 def compute_critic_loss(critic, target_critic, transitions, gamma=0.99):
@@ -17,8 +12,8 @@ def compute_critic_loss(critic, target_critic, transitions, gamma=0.99):
     rewards, v_currs, v_nexts = [], [], []
 
     for t in transitions:
-        s = tuple(_to_4d(x, device) for x in t.state)
-        ns = tuple(_to_4d(x, device) for x in t.next_state)
+        s = tuple(to_4d(x, device) for x in t.state)
+        ns = tuple(to_4d(x, device) for x in t.next_state)
         v_currs.append(critic(*s).squeeze())
         with torch.no_grad():
             v_nexts.append(target_critic(*ns).squeeze())
@@ -44,8 +39,8 @@ def compute_policy_loss_discrete(policy, critic, transitions, gamma=0.99):
     advantages, log_probs_a1 = [], []
 
     for t in transitions:
-        s = tuple(_to_4d(x, device) for x in t.state)
-        ns = tuple(_to_4d(x, device) for x in t.next_state)
+        s = tuple(to_4d(x, device) for x in t.state)
+        ns = tuple(to_4d(x, device) for x in t.next_state)
 
         with torch.no_grad():
             v_s = critic(*s).squeeze()
@@ -75,7 +70,7 @@ def compute_policy_loss_continuous(policy, critic, admm_step, transitions,
     v_nexts = []
 
     for t in transitions:
-        s = tuple(_to_4d(x, device) for x in t.state)
+        s = tuple(to_4d(x, device) for x in t.state)
         y = t.sinogram.to(device)
 
         _, sigma_seq, mu_seq = policy(*s)
@@ -90,8 +85,8 @@ def compute_policy_loss_continuous(policy, critic, admm_step, transitions,
                                         mu=mu_seq[0, i])
 
         next_iter = (t.state[4].to(device) + m / (N * m)).clamp(0, 1)
-        v_next = critic(_to_4d(x_c, device), _to_4d(z_c, device),
-                        _to_4d(u_c, device),
+        v_next = critic(to_4d(x_c, device), to_4d(z_c, device),
+                        to_4d(u_c, device),
                         t.state[3].to(device), next_iter)
         v_nexts.append(v_next.squeeze())
 
