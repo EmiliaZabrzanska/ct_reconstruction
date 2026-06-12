@@ -112,7 +112,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train TFPnP with LIONsolver")
     parser.add_argument("--denoiser_path", type=str,
-                        default="/home/eaz21/rds/hpc-work/ct_reconstruction/results/baselines/drunet_gray.pth")
+                        default="/home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth")
     parser.add_argument("--output_dir", type=str, default="results/learned")
     parser.add_argument("--n_train", type=int, default=200,
                         help="Max training images from LION split (None=all 3300)")

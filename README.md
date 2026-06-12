@@ -15,7 +15,9 @@ carried out as part of the MPhil in Data Intensive Science at the University of 
 conda activate ct_recon
 pip install -e .
 
-## Repository structurect_reconstruction/
+## Repository structure
+
+eaz21/
 ├── pyproject.toml
 ├── environment.yml
 ├── docs/                  # Paper PDF, project brief

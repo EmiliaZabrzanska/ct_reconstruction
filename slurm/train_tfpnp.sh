@@ -5,24 +5,32 @@
 #SBATCH -N 1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=32G
-#SBATCH --time=06:00:00
+#SBATCH --time=15:00:00
 #SBATCH -o logs/tfpnp_%j.out
 #SBATCH -e logs/tfpnp_%j.err
 
 source ~/.bashrc
 conda activate mphil_ct
-cd ~/rds/hpc-work/ct_reconstruction
+cd ~/rds/hpc-work/eaz21
 
-mkdir -p logs results/learned
+# ── Single source of truth for naming ─────────────────────────────────
+EXPERIMENT_NAME="run_02_pat_100"
 
-echo "Job ID: $SLURM_JOB_ID"
-echo "Node: $(hostname)"
-echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader)"
-echo "Start: $(date)"
+mkdir -p logs
 
+echo "================================================="
+echo "Job ID:     $SLURM_JOB_ID"
+echo "Node:       $(hostname)"
+echo "GPU:        $(nvidia-smi --query-gpu=name --format=csv,noheader)"
+echo "Experiment: $EXPERIMENT_NAME"
+echo "Start:      $(date)"
+echo "================================================="
+
+# ── Train ─────────────────────────────────────────────────────────────
 python scripts/train_tfpnp.py \
-    --output_dir results/learned/run_02_50pat_50ep \
-    --n_patients 50 \
+    --output_dir "results/learned/$EXPERIMENT_NAME" \
+    --n_train 100 \
+    --n_val 40 \
     --n_epochs 50 \
     --batch_size 8 \
     --n_grad_steps 4 \
@@ -34,6 +42,31 @@ python scripts/train_tfpnp.py \
     --lr_pi2 1e-6 \
     --pi2_warmup 5 \
     --pi2_loss_scale 0.01 \
-    --noise_std 0
+    --noise_std 0 \
+    --denoiser_path /home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth
 
+TRAIN_EXIT=$?
+if [ $TRAIN_EXIT -ne 0 ]; then
+    echo "Training failed (exit $TRAIN_EXIT). Skipping post-processing."
+    exit $TRAIN_EXIT
+fi
+
+# ── Post-training: figures + full evaluation ──────────────────────────
+echo ""
+echo "================================================="
+echo "Training complete at $(date)."
+echo "Running post-hoc evaluation..."
+echo "================================================="
+
+python scripts/plot_training_curves.py --experiment_name "$EXPERIMENT_NAME"
+python scripts/plot_checkpoint_comparison.py --experiment_name "$EXPERIMENT_NAME"
+python scripts/evaluate_run.py --experiment_name "$EXPERIMENT_NAME" --n_test_subset 40
+
+echo ""
+echo "================================================="
+echo "All outputs:"
+echo "  Checkpoints:  /home/eaz21/rds/hpc-work/eaz21/results/learned/$EXPERIMENT_NAME/"
+echo "  Metrics CSV:  /home/eaz21/rds/hpc-work/eaz21/results/metrics/$EXPERIMENT_NAME/"
+echo "  Figures:      /home/eaz21/rds/hpc-work/eaz21/figures/$EXPERIMENT_NAME/"
 echo "End: $(date)"
+echo "================================================="
