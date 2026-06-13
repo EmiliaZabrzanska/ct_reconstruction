@@ -46,6 +46,8 @@ class ResNetActor_ADMM(nn.Module):
     ):
         super().__init__()
         self.n_action_steps = n_action_steps
+        self.sigma_range = sigma_range          # ← new
+        self.mu_range = mu_range                # ← new
         self.sigma_min, self.sigma_max = sigma_range
         self.mu_min, self.mu_max = mu_range
 

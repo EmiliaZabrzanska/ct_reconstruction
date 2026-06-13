@@ -18,6 +18,15 @@ except ImportError:
     HAS_HAARPSI = False
 
 
+def ls_scale(gt: torch.Tensor, recon: torch.Tensor) -> torch.Tensor:
+    """
+    Least-squares optimal scalar alignment: argmin_α ||gt - α·recon||².
+    Returns α·recon.
+    """
+    alpha = (gt * recon).sum() / ((recon * recon).sum() + 1e-12)
+    return recon * alpha
+
+
 # ── Tensor-based metrics (differentiable) ─────────────────────────────────
 
 def psnr(x_hat: torch.Tensor, x_gt: torch.Tensor,
@@ -89,6 +98,24 @@ def ssim(
     return (numerator / denominator).mean()
 
 
+def haarpsi_score(x_hat: torch.Tensor, x_gt: torch.Tensor,
+                  data_range: float = 1.0) -> float:
+    """
+    HaarPSI — correlates most with radiologist preference (Biguri et al.).
+
+    Args:
+        x_hat: reconstruction, shape (B, 1, H, W)
+        x_gt:  ground truth, shape (B, 1, H, W)
+        data_range: pixel value range
+
+    Returns:
+        HaarPSI score as float
+    """
+    if not HAS_HAARPSI:
+        raise ImportError("piq not installed — run: pip install piq")
+    return _haarpsi(x_hat.float(), x_gt.float(), data_range=data_range).item()
+
+
 def evaluate_reconstruction(
     x_hat: torch.Tensor,
     x_gt: torch.Tensor,
@@ -127,28 +154,32 @@ def psnr_np(gt, recon) -> float:
     return 10.0 * math.log10(data_range**2 / mse_val)
 
 
-def ls_scale(gt: torch.Tensor, recon: torch.Tensor) -> torch.Tensor:
+def ssim_np(gt, recon) -> float:
     """
-    Least-squares optimal scalar alignment: argmin_α ||gt - α·recon||².
-    Returns α·recon.
+    SSIM helper for reward computation. Returns Python float.
+    Accepts (1, H, W) or (1, 1, H, W) tensors; mirrors psnr_np's interface.
+    Uses GT max as data range (matches evaluate_reconstruction's convention).
     """
-    alpha = (gt * recon).sum() / ((recon * recon).sum() + 1e-12)
-    return recon * alpha
+    if gt.dim() == 3:
+        gt = gt.unsqueeze(0)
+    if recon.dim() == 3:
+        recon = recon.unsqueeze(0)
+    data_range = float(gt.max())
+    recon_c = recon.clamp(0, data_range)
+    return float(ssim(recon_c, gt, data_range=data_range))
 
 
-def haarpsi_score(x_hat: torch.Tensor, x_gt: torch.Tensor,
-                  data_range: float = 1.0) -> float:
+def haarpsi_np(gt, recon) -> float:
     """
-    HaarPSI — correlates most with radiologist preference (Biguri et al.).
-
-    Args:
-        x_hat: reconstruction, shape (B, 1, H, W)
-        x_gt:  ground truth, shape (B, 1, H, W)
-        data_range: pixel value range
-
-    Returns:
-        HaarPSI score as float
+    HaarPSI helper for reward computation. Returns Python float.
+    Accepts (1, H, W) or (1, 1, H, W) tensors; mirrors psnr_np's interface.
     """
     if not HAS_HAARPSI:
-        raise ImportError("piq not installed — run: pip install piq")
-    return _haarpsi(x_hat.float(), x_gt.float(), data_range=data_range).item()
+        raise ImportError("piq not installed — required for haarpsi_np")
+    if gt.dim() == 3:
+        gt = gt.unsqueeze(0)
+    if recon.dim() == 3:
+        recon = recon.unsqueeze(0)
+    data_range = float(gt.max())
+    recon_c = recon.clamp(0, data_range)
+    return haarpsi_score(recon_c, gt, data_range=data_range)

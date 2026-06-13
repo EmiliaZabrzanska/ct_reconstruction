@@ -89,9 +89,9 @@ def main():
     if k_train and k_val:
         epochs = list(range(1, len(h[k_train]) + 1))
         axes[1, 1].plot(epochs, h[k_train], "-o", color="#1F4E79",
-                        label="Train", lw=2, ms=6)
-        axes[1, 1].plot(epochs, h[k_val], "--s", color="#C00000",
-                        label="Val", lw=2, ms=6)
+                        label="Train", lw=1.2, ms=4, alpha=0.75)
+        axes[1, 1].plot(epochs, h[k_val], "-s", color="#C00000",
+                        label="Val", lw=1.2, ms=4, alpha=0.75)
         axes[1, 1].set_xlabel("Epoch")
         axes[1, 1].set_ylabel("PSNR (dB)")
         axes[1, 1].set_title("Epoch mean PSNR")

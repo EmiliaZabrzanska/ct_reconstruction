@@ -25,7 +25,7 @@ from ct_tfpnp.ct_ops.tv import tv_reconstruction
 from ct_tfpnp.evaluation.metrics import evaluate_reconstruction, psnr_np as psnr, ls_scale
 from ct_tfpnp.datasets.lidc import get_lion_split
 from ct_tfpnp.experiments.parallel_beam_ct import experiment
-from ct_tfpnp.utils import to_4d
+from ct_tfpnp.utils import to_4d, read_metrics_config
 from LION.CTtools.ct_utils import make_operator
 
 # ── Output paths (edit these once if your layout ever changes) ─────────
@@ -47,7 +47,6 @@ def compute_metrics(gt, recon):
     recon_4d = to_4d(recon).clamp(0, float(gt.max()))
     return evaluate_reconstruction(recon_4d, gt_4d, float(gt.max()))
 
-
 def load_checkpoint(ckpt_dir, device):
     ckpt_val = ckpt_dir / "checkpoint_best_val.pth"
     ckpt_best = ckpt_dir / "checkpoint_best.pth"
@@ -66,20 +65,29 @@ def load_checkpoint(ckpt_dir, device):
     else:
         raise FileNotFoundError(f"No checkpoints in {ckpt_dir}")
 
+    cfg = read_metrics_config(ckpt_dir)
+    sigma_range = tuple(cfg.get('sigma_range') or (1.0, 5.0))
+    mu_range = tuple(cfg.get('mu_range') or (10.0, 100.0))
+    print(f"  σ range: {sigma_range}")
+    print(f"  µ range: {mu_range}")
+
     if 'model_state_dict' in ckpt:
         from ct_tfpnp.models.tfpnp_model import TFPnPModel
-        model = TFPnPModel(geometry=experiment.experiment_params.geometry)
+        model_params = TFPnPModel.default_parameters()
+        model_params.sigma_min, model_params.sigma_max = sigma_range
+        model_params.mu_min, model_params.mu_max = mu_range
+        model = TFPnPModel(model_parameters=model_params,
+                           geometry=experiment.experiment_params.geometry)
         model.load_state_dict(ckpt['model_state_dict'])
         return model.policy.to(device).eval()
     elif 'policy_state_dict' in ckpt:
         policy = ResNetActor_ADMM(in_channels=5, n_action_steps=5,
-                                  sigma_range=(1.0, 5.0),
-                                  mu_range=(10.0, 100.0)).to(device)
+                                  sigma_range=sigma_range,    # ← use detected range
+                                  mu_range=mu_range).to(device)
         policy.load_state_dict(ckpt['policy_state_dict'])
         return policy.eval()
     else:
         raise KeyError(f"Unknown checkpoint format. Keys: {list(ckpt.keys())}")
-
 
 def run_evaluation(test_images, test_labels, noise_levels, op, admm_step,
                    policy, device):
@@ -183,22 +191,40 @@ def plot_metrics_bars(all_results, n_test, noise_level, path):
 
 
 def plot_per_image_psnr(all_results, test_labels, noise_level, path):
+    """Per-image PSNR bars. Subsamples evenly if test set > 30 images."""
     results = all_results[noise_level]
+    n_test = len(test_labels)
+
+    # Subsample if too many images to display cleanly
+    if n_test > 30:
+        n_show = max(30, int(np.ceil(0.1 * n_test)))
+        show_indices = np.linspace(0, n_test - 1, n_show, dtype=int)
+    else:
+        show_indices = np.arange(n_test)
+
     fig, ax = plt.subplots(figsize=(16, 5))
-    x_pos = np.arange(len(test_labels))
+    x_pos = np.arange(len(show_indices))
     width = 0.15
     offset = (len(METHODS) - 1) * width / 2
+
     for i, (method, color) in enumerate(zip(METHODS, COLORS)):
-        psnrs = [r['psnr'] for r in results[method]]
+        psnrs = [results[method][idx]['psnr'] for idx in show_indices]
         ax.bar(x_pos + i * width - offset, psnrs, width,
                label=method, color=color, alpha=0.9,
                edgecolor='white', linewidth=0.5)
+
+    labels_subset = [test_labels[idx].replace('test_', '#') for idx in show_indices]
     ax.set_xticks(x_pos)
-    ax.set_xticklabels([l.replace('test_', '#') for l in test_labels],
-                       rotation=30, ha='right', fontsize=9)
+    ax.set_xticklabels(labels_subset, rotation=30, ha='right', fontsize=9)
+
+    if n_test > 30:
+        title = (f'Per-Image PSNR at {noise_level*100:.1f}% Noise '
+                 f'({len(show_indices)} of {n_test} images, evenly spaced)')
+    else:
+        title = f'Per-Image PSNR at {noise_level*100:.1f}% Noise'
+
     ax.set_ylabel('PSNR (dB)', fontsize=10)
-    ax.set_title(f'Per-Image PSNR at {noise_level*100:.1f}% Noise',
-                 fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=12, fontweight='bold')
     ax.legend(fontsize=8, ncol=len(METHODS), loc='upper center',
               bbox_to_anchor=(0.5, -0.15), frameon=False)
     ax.grid(axis='y', alpha=0.2)
@@ -242,7 +268,8 @@ def plot_metrics_vs_noise(all_results, noise_levels, path):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--experiment_name", required=True)
-    p.add_argument("--n_test_subset", type=int, default=None)
+    p.add_argument("--n_test_subset", type=int, default=0,
+               help="Max test images. 0 = use all (389 from LION test split).")
     p.add_argument("--noise_levels", nargs="+", type=float,
                    default=[0.05, 0.075, 0.10])
     p.add_argument("--denoiser_path", type=str,
@@ -269,10 +296,13 @@ def main():
 
     test_images, test_indices = get_lion_split(
         split="test", geometry=geo, device=device)
-    if args.n_test_subset is not None:
+    n_test_total = len(test_images)
+    if args.n_test_subset > 0 and args.n_test_subset < n_test_total:
         test_images = test_images[:args.n_test_subset]
         test_indices = test_indices[:args.n_test_subset]
-        print(f"Subset: {args.n_test_subset} of test images")
+        print(f"Subset: {args.n_test_subset} of {n_test_total} test images")
+    else:
+        print(f"Using all {n_test_total} test images")
     test_labels = [f"test_{i}" for i in test_indices]
 
     ckpt_dir = CHECKPOINT_BASE / args.experiment_name

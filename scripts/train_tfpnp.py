@@ -33,7 +33,14 @@ def main(args):
     )
 
     # ── Model ─────────────────────────────────────────────────────────
-    model = TFPnPModel(geometry=geometry)
+    model_params = TFPnPModel.default_parameters()
+    model_params.sigma_min = args.sigma_floor
+    model_params.sigma_max = args.sigma_ceil
+    model_params.mu_min = args.mu_floor
+    model_params.mu_max = args.mu_ceil
+    model = TFPnPModel(model_parameters=model_params, geometry=geometry)
+    print(f"  σ range: [{args.sigma_floor}, {args.sigma_ceil}]")
+    print(f"  µ range: [{args.mu_floor}, {args.mu_ceil}]")
 
     # ── Optimizer — separate LR for π₂ param_head ────────────────────
     optimizer = torch.optim.Adam([
@@ -52,6 +59,8 @@ def main(args):
         lr_critic=args.lr_critic,
         pi2_loss_scale=args.pi2_loss_scale,
         pi2_warmup_epochs=args.pi2_warmup,
+        reward_type=args.reward_type,
+        reward_alpha=args.reward_alpha
     )
 
     # ── Solver ────────────────────────────────────────────────────────
@@ -74,10 +83,11 @@ def main(args):
     train_images, _ = get_lion_split("train", geometry, device="cpu")
     val_images, _ = get_lion_split("validation", geometry, device="cpu")
 
-    # Subset for practical training time
-    if args.n_train is not None:
+    # Subset for practical training time. 0 = use all.
+    if args.n_train > 0:
         train_images = train_images[:args.n_train]
-    val_images = val_images[:args.n_val]
+    if args.n_val > 0:
+        val_images = val_images[:args.n_val]
 
     print(f"Train: {len(train_images)} images, Val: {len(val_images)} images")
 
@@ -95,10 +105,16 @@ def main(args):
 
     # ── Train ─────────────────────────────────────────────────────────
     print(f"\nStarting training: {args.n_epochs} epochs")
-    print(f"  Train images: {len(train_images)}")
-    print(f"  Val images:   {len(val_images)}")
-    print(f"  π₂ warmup:    {args.pi2_warmup} epochs")
+    print(f"  Train images:  {len(train_images)}")
+    print(f"  Val images:    {len(val_images)}")
+    print(f"  σ range:       [{args.sigma_floor}, {args.sigma_ceil}]")  
+    print(f"  µ range:       [{args.mu_floor}, {args.mu_ceil}]")          
+    print(f"  Buffer size:   {args.buffer_size}")                         
+    print(f"  n_grad_steps:  {args.n_grad_steps}")                        
+    print(f"  π₂ warmup:     {args.pi2_warmup} epochs")
     print(f"  π₂ loss scale: {args.pi2_loss_scale}")
+    print(f"  Reward:        {args.reward_type}" +
+          (f" (α={args.reward_alpha})" if args.reward_type != 'psnr' else ""))
     print(f"  LR policy: {args.lr_policy}, LR π₂: {args.lr_pi2}, LR critic: {args.lr_critic}")
     solver.train(args.n_epochs)
 
@@ -115,9 +131,9 @@ if __name__ == "__main__":
                         default="/home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth")
     parser.add_argument("--output_dir", type=str, default="results/learned")
     parser.add_argument("--n_train", type=int, default=200,
-                        help="Max training images from LION split (None=all 3300)")
+                    help="Max training images. 0 = use all (3300 from LION train split).")
     parser.add_argument("--n_val", type=int, default=30,
-                        help="Max validation images")
+                        help="Max validation images. 0 = use all (401 from LION val split).")
     parser.add_argument("--n_epochs", type=int, default=50)
     parser.add_argument("--m", type=int, default=5)
     parser.add_argument("--N", type=int, default=6)
@@ -132,5 +148,18 @@ if __name__ == "__main__":
     parser.add_argument("--pi2_loss_scale", type=float, default=0.01)
     parser.add_argument("--n_grad_steps", type=int, default=4)
     parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--sigma_floor", type=float, default=1.0,
+                        help="Lower bound for policy's σ output")
+    parser.add_argument("--sigma_ceil", type=float, default=5.0,
+                        help="Upper bound for policy's σ output")
+    parser.add_argument("--mu_floor", type=float, default=10.0,
+                        help="Lower bound for policy's µ output")
+    parser.add_argument("--mu_ceil", type=float, default=100.0,
+                        help="Upper bound for policy's µ output")
+    parser.add_argument("--reward_type", type=str, default="psnr",
+                        choices=["psnr", "psnr_ssim", "psnr_haarpsi"],
+                        help="Reward function: ΔPSNR alone, +α·ΔSSIM, or +α·ΔHaarPSI")
+    parser.add_argument("--reward_alpha", type=float, default=5.0,
+                        help="Weight on SSIM/HaarPSI in reward (ignored if reward_type=psnr)")
     args = parser.parse_args()
     main(args)

@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH -J tfpnp_run02
+#SBATCH -J tfpnp_run03
 #SBATCH -A MPHIL-DIS-SL2-GPU
 #SBATCH -p ampere
 #SBATCH -N 1
 #SBATCH --gres=gpu:1
-#SBATCH --mem=32G
-#SBATCH --time=15:00:00
+#SBATCH --mem=80G
+#SBATCH --time=30:00:00
 #SBATCH -o logs/tfpnp_%j.out
 #SBATCH -e logs/tfpnp_%j.err
 
@@ -13,8 +13,7 @@ source ~/.bashrc
 conda activate mphil_ct
 cd ~/rds/hpc-work/eaz21
 
-# ── Single source of truth for naming ─────────────────────────────────
-EXPERIMENT_NAME="run_02_pat_100"
+EXPERIMENT_NAME="run_03_full"
 
 mkdir -p logs
 
@@ -26,12 +25,12 @@ echo "Experiment: $EXPERIMENT_NAME"
 echo "Start:      $(date)"
 echo "================================================="
 
-# ── Train ─────────────────────────────────────────────────────────────
+# ── Train (0 = use full splits) ───────────────────────────────────────
 python scripts/train_tfpnp.py \
     --output_dir "results/learned/$EXPERIMENT_NAME" \
-    --n_train 100 \
-    --n_val 40 \
-    --n_epochs 50 \
+    --n_train 0 \
+    --n_val 0 \
+    --n_epochs 5 \
     --batch_size 8 \
     --n_grad_steps 4 \
     --m 5 \
@@ -40,9 +39,16 @@ python scripts/train_tfpnp.py \
     --lr_policy 3e-5 \
     --lr_critic 1e-4 \
     --lr_pi2 1e-6 \
-    --pi2_warmup 5 \
+    --pi2_warmup 1 \
     --pi2_loss_scale 0.01 \
     --noise_std 0 \
+    --buffer_size 10000 \
+    --sigma_floor 1.0 \
+    --sigma_ceil 5.0 \
+    --mu_floor 10.0 \
+    --mu_ceil 100.0 \
+    --reward_type psnr \           
+    --reward_alpha 0.0 \  
     --denoiser_path /home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth
 
 TRAIN_EXIT=$?
@@ -55,12 +61,13 @@ fi
 echo ""
 echo "================================================="
 echo "Training complete at $(date)."
-echo "Running post-hoc evaluation..."
+echo "Running post-hoc evaluation on FULL test set..."
 echo "================================================="
 
 python scripts/plot_training_curves.py --experiment_name "$EXPERIMENT_NAME"
 python scripts/plot_checkpoint_comparison.py --experiment_name "$EXPERIMENT_NAME"
-python scripts/evaluate_run.py --experiment_name "$EXPERIMENT_NAME" --n_test_subset 40
+python scripts/plot_policy_behaviour.py --experiment_name "$EXPERIMENT_NAME"
+python scripts/evaluate_run.py --experiment_name "$EXPERIMENT_NAME" --n_test_subset 0
 
 echo ""
 echo "================================================="

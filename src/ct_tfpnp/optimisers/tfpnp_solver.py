@@ -49,6 +49,8 @@ class TFPnPSolverParams(LIONParameter):
         if not hasattr(self, 'pi2_loss_scale'):     self.pi2_loss_scale = 0.01
         if not hasattr(self, 'lr_pi2'):             self.lr_pi2 = 1e-6
         if not hasattr(self, 'pi2_warmup_epochs'):  self.pi2_warmup_epochs = 5
+        if not hasattr(self, 'reward_type'):        self.reward_type = 'psnr'
+        if not hasattr(self, 'reward_alpha'):       self.reward_alpha = 0.0
 
 
 class TFPnPSolver(LIONsolver):
@@ -150,6 +152,7 @@ class TFPnPSolver(LIONsolver):
                     self.model.policy, self.admm_step, self.replay_buffer,
                     gt, self.op,
                     noise_std=sp.noise_std, m=sp.m, N=sp.N, eta=sp.eta,
+                    reward_type=sp.reward_type, reward_alpha=sp.reward_alpha,
                 )
                 epoch_psnrs.append(ep_stats['final_psnr'])
 
@@ -278,6 +281,12 @@ class TFPnPSolver(LIONsolver):
             'pi2_loss_scale': sp.pi2_loss_scale,
             'pi2_warmup_epochs': sp.pi2_warmup_epochs,
             'best_val_psnr': float(self.best_val_psnr),
+            'sigma_range': list(self.model.policy.sigma_range)
+                   if hasattr(self.model.policy, 'sigma_range') else None,
+            'mu_range': list(self.model.policy.mu_range)
+                        if hasattr(self.model.policy, 'mu_range') else None,
+            'reward_type': sp.reward_type,        
+            'reward_alpha': sp.reward_alpha,  
         }
 
         path = self.save_folder / "metrics_history.json"
