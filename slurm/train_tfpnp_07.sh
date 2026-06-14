@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J tfpnp_run07
+#SBATCH -J tfpnp_run06
 #SBATCH -A MPHIL-DIS-SL2-GPU
 #SBATCH -p ampere
 #SBATCH -N 1
@@ -13,7 +13,7 @@ source ~/.bashrc
 conda activate mphil_ct
 cd ~/rds/hpc-work/eaz21
 
-EXPERIMENT_NAME="run_07_haarpsi_reward"
+EXPERIMENT_NAME="run_06_ssim_reward"
 
 mkdir -p logs
 
@@ -47,7 +47,7 @@ python scripts/train_tfpnp.py \
     --sigma_ceil 5.0 \
     --mu_floor 10.0 \
     --mu_ceil 100.0 \
-    --reward_type psnr_haarpsi \
+    --reward_type psnr_ssim \
     --reward_alpha 5.0 \
     --denoiser_path /home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth
 

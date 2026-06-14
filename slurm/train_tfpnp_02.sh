@@ -39,7 +39,7 @@ python scripts/train_tfpnp.py \
     --lr_policy 3e-5 \
     --lr_critic 1e-4 \
     --lr_pi2 1e-6 \
-    --pi2_warmup 1 \
+    --pi2_warmup 5 \
     --pi2_loss_scale 0.01 \
     --noise_std 0 \
     --buffer_size 5000 \
