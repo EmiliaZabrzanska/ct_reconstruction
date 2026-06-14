@@ -16,7 +16,7 @@ SHELL=/bin/bash
 
 all: report.pdf
 
-report.pdf: report.tex logo-dcst-colour.pdf bibliography.bib chapters/*.tex
+report.pdf: report.tex bibliography.bib chapters/*.tex logos/ucam-logo-colour-preferred.png logos/university_of_cambridge_mphil_in_data_intensive_science_logo.jpeg
 	pdflatex -halt-on-error -file-line-error report.tex
 	bibtex report
 	pdflatex -halt-on-error -file-line-error report.tex
