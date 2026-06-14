@@ -1,55 +1,63 @@
 % ============================================================
-%  Chapter 6: Conclusion
+%  Chapter 7: Conclusion
 % ============================================================
 %
-% AIM: Summarise what you did, what you found, and what comes next.
-%      ~1.5-2 pages.
+%  TARGET: ~300 words. Tight. Write LAST.
 %
-% CONTENTS:
-%   6.1 Summary (problem, approach, key results -- one paragraph each)
-%   6.2 Contributions (bullet list of deliverables)
-%   6.3 Limitations (what didn't you finish, caveats)
-%   6.4 Future Work (cone-beam, 3D, diffusion denoisers, clinical data,
-%       LION PR, convergence analysis)
+%  HARD RULES:
+%   - Do not introduce new information.
+%   - Do not repeat Chapter 5 numbers verbatim -- the
+%     introduction has them; here just refer.
+%   - Keep future work to 3-4 items max.
 %
-% FIGURES: None.
+% ============================================================
 %
-% TIPS:
-%   - Write LAST (with the introduction)
-%   - Don't introduce new information
-%   - Be concise
+%  TARGET STRUCTURE (no subsections needed at this length, but
+%  keep them if it helps your template):
+%
+%  ¶1 Summary (~120 w)
+%       One sentence on the problem (sparse-view CT is
+%       ill-posed). One on the approach (faithful reproduction
+%       of TFPnP in LION with DRUNet as the off-the-shelf
+%       denoiser, trained on LIDC-IDRI). One on the headline
+%       result (TFPnP beats Fixed PnP-ADMM by ~X dB on the 389-
+%       image test set across three noise levels, with the
+%       policy learning interpretable image-specific schedules).
+%
+%  ¶2 Contributions (~80 w, compact list)
+%       (i) In-domain CT reproduction of TFPnP with
+%           sigma/mu calibration for mu-valued inputs.
+%       (ii) DRUNet integration validating the off-the-shelf
+%            generalisation claim with a non-IRCNN denoiser.
+%       (iii) Empirical finding: depth-per-image dominates
+%            data volume in RL-tuned PnP training.
+%       (iv) LION toolbox integration (engineering).
+%
+%  ¶3 Future work (~100 w, 3-4 bullets in prose)
+%       - LPD and FBPconv trained baselines for full
+%         like-for-like learned-method comparison.
+%       - DRUNet fine-tuned on CT, or a CT-specific denoiser
+%         (e.g. ACR/AR) -- testing whether the residual
+%         over-smoothing closes the perceptual gap.
+%       - Cone-beam geometry (LION's tomosipo backend supports
+%         this natively, unlike the paper's TorchRadon).
+%       - Realistic noise model (Poisson on photon counts) for
+%         clinical applicability.
+%
+% ============================================================
+%  FRAMING TO USE:
+%   "faithful reproduction" not "reproduction of"
+%   "in-domain advantage" when discussing paper comparisons
+%   "depth-per-image" -- your novel finding, name it
+%
+%  FRAMING TO AVOID:
+%   Overclaiming the LION integration as research contribution.
+%   Claiming the work surpasses the paper (in-domain caveat).
+%   Vague platitudes like "results demonstrate the power of RL".
 % ============================================================
 
 \chapter{Conclusion}
 \label{chap:conclusion}
 
-% -----------------------------------------------------------
-\section{Summary}
-\label{sec:summary}
-% -----------------------------------------------------------
-
-% TODO: 3 paragraphs: problem, approach, results.
-
-
-% -----------------------------------------------------------
-\section{Contributions}
-\label{sec:contributions}
-% -----------------------------------------------------------
-
-% TODO: Concrete list of what you delivered.
-
-
-% -----------------------------------------------------------
-\section{Limitations}
-\label{sec:limitations}
-% -----------------------------------------------------------
-
-% TODO: Honest assessment.
-
-
-% -----------------------------------------------------------
-\section{Future Work}
-\label{sec:future-work}
-% -----------------------------------------------------------
-
-% TODO: What would you do with 3 more months?
+% TODO: write after Ch.5 and Ch.6 are finalised so headline numbers
+% can be quoted accurately.

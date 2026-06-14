@@ -2,205 +2,307 @@
 %  Chapter 4: Design and Implementation
 % ============================================================
 %
-% AIM: Describe HOW you built the system. A reader should be able to
-%      reproduce your work from this chapter alone. ~6-8 pages.
+%  TARGET: ~2,200 words. This is your biggest chapter and
+%  carries most of the technical content marks.
 %
-% CONTENTS:
-%   4.1 Software Framework (Why LION, Why tomosipo, operator abstraction)
-%   4.2 Dataset Pipeline (which dataset, preprocessing, splits)
-%   4.3 Model Architecture (denoiser U-Net, policy network, value network)
-%   4.4 Training Procedure (denoiser pre-training, RL loop, losses, hardware)
-%   4.5 Baseline Implementations (FBP, TV, SIRT, LPD)
+%  STRATEGY: A reader should be able to reproduce the system
+%  from this chapter + the appendix hyperparameter table.
+%  Be concrete (dimensions, hyperparameters, file paths in
+%  prose) without spilling into the actual code.
 %
-% FIGURES:
-%   - Fig 4.1: System architecture diagram [TikZ]
-%   - Fig 4.2: U-Net denoiser architecture
-%   - Fig 4.3: Policy network architecture
-%   - Fig 4.4: Training curve (reward vs episode) [generate during training]
+%  CRITICAL: hyperparameter table goes here (Section 4.5).
+%  It costs ~80 words but saves ~400 of prose justification.
 %
-% TIPS:
-%   - Include code snippets where they clarify
-%   - Be specific about dimensions, channels, hyperparameters
-%   - Write this AS you implement, not after
-%   - Mention any deviations from the original paper and why
+% ============================================================
+%
+%  TARGET STRUCTURE (7 sections, ~2,200 w total):
+%
+%   4.1 Pipeline overview                 250 w
+%   4.2 Forward model and ADMM env        400 w
+%   4.3 DRUNet denoiser                   300 w
+%   4.4 Policy network and training       500 w
+%   4.5 Hyperparameters + paper deltas    400 w  (table-heavy)
+%   4.6 sigma/mu calibration + domain     200 w
+%   4.7 Data, baselines, metrics          150 w
+%
+%  Most of the tomosipo-exploration prose currently in the
+%  draft Section 4.1.6 is GREAT but at 320 words it's too
+%  expensive. Compress to ~80 words inside Section 4.1; the
+%  longer story goes in the appendix or is dropped.
+%
 % ============================================================
 
 \chapter{Design and Implementation}
 \label{chap:implementation}
 
 % -----------------------------------------------------------
-\section{Software Framework}
-\label{sec:software-framework}
+\section{Pipeline Overview}
+\label{sec:pipeline-overview}
 % -----------------------------------------------------------
 
-\subsection{Why LION?}
+% TODO [~250 words]
+% One paragraph end-to-end:
+%   LIDC-IDRI DICOMs -> LION dataset wrapper -> ParallelBeamSparseViewCT
+%   (30 views, 512x512) -> ADMM environment with DRUNet denoiser ->
+%   ResNet-18 policy network -> A2C training loop with replay buffer.
+%
+% Mention the repository layout briefly:
+%   ct_tfpnp/{ct_ops, datasets, evaluation, experiments, models,
+%             optimisers, training}
+% pip-installable, runs on CSD3 A100.
+%
+% Then compressed tomosipo-validation paragraph (~80 w):
+%   "Before the main TFPnP implementation, a systematic validation
+%    of the tomosipo CT operator was carried out (notebooks 01-02):
+%    parallel-beam geometry, manual SIRT implementation cross-checked
+%    against ASTRA's SIRT3D_CUDA, Gaussian noise simulation matching
+%    the TFPnP paper's 5/7.5/10% convention, and baseline FBP/SIRT/
+%    NAG-LS/TV reconstructions establishing the regime against which
+%    TFPnP must improve. Full details are deferred to Appendix A."
+%
+% Reference Figure 4.1 here (system pipeline diagram).
 
-LION (\emph{Learned Iterative Optimisation Networks}) is an open-source Python toolbox
-developed by the Cambridge Computational Imaging (CIA) group at DAMTP, available at
-\url{https://github.com/CambridgeCIA/LION} \citep{Biguri2016TIGRE}. LION was chosen as
-the implementation framework for this project for several reasons:
-
-\begin{itemize}
-    \item \textbf{Integrated CT pipeline.} LION provides end-to-end infrastructure for
-          CT reconstruction research: dataset loading (including the Mayo Clinic Low Dose
-          CT Grand Challenge dataset \citep{MayoClinic}), geometry configuration, sinogram
-          simulation, classical reconstruction baselines (FBP/FDK, SIRT, TV), and learned
-          reconstruction model training loops.
-    \item \textbf{PyTorch native.} LION is built on PyTorch, allowing seamless integration
-          of differentiable components---a prerequisite for the model-based RL training in
-          TFPnP \citep{Wei2022TFPnP}, which requires backpropagation through the PnP
-          iterations.
-    \item \textbf{Modular solver architecture.} LION's \texttt{Solver} abstraction
-          separates the optimisation loop from the model definition, making it
-          straightforward to implement a custom TFPnP training loop alongside the existing
-          \texttt{SupervisedSolver} used by LPD \citep{AdlerOktem2018}.
-    \item \textbf{TIGRE/tomosipo integration.} LION uses tomosipo and TIGRE under the
-          hood, providing cone-beam CT operators not available in TorchRadon (which the
-          original TFPnP paper used).
-\end{itemize}
-
-\subsection{Why Tomosipo?}
-
-Tomosipo \citep{Hendriksen2021tomosipo} is a Python library for defining CT acquisition
-geometries and computing forward/back-projection operators via GPU-accelerated ASTRA
-Toolbox backends. Its role in this project is:
-
-\begin{itemize}
-    \item \textbf{Geometry abstraction.} A clean API for specifying parallel-beam and
-          cone-beam scan geometries:
-          \begin{verbatim}
-import tomosipo as ts
-vg = ts.volume(shape=(1, 256, 256))
-pg = ts.parallel(angles=30, shape=(1, 256))
-A  = ts.operator(vg, pg)
-          \end{verbatim}
-
-    \item \textbf{Operator abstraction.} The resulting \texttt{A} object implements
-          $\bm{x} \mapsto A\bm{x}$ (forward projection) and $\bm{y} \mapsto A^T\bm{y}$
-          (backprojection) as callable functions.
-
-    \item \textbf{Differentiability.} Via \texttt{ts\_algorithms}, the projectors can be
-          wrapped in PyTorch's autograd framework.
-
-    \item \textbf{Consistency with the paper's geometry.} The TFPnP paper uses a 30-view
-          parallel-beam geometry with 182 detector pixels. Tomosipo can replicate this
-          exactly.
-\end{itemize}
-
-\subsection{Operator Abstraction}
-
-At the core of the CT pipeline is the system operator pair $(A, A^T)$. In LION/tomosipo,
-these are implemented via the ASTRA Toolbox's CUDA-accelerated routines. The forward
-projection $\bm{y} = A\bm{x}$ simulates the physical measurement process described in
-\cref{sec:ct-basics}. The backprojection $A^T\bm{y}$ distributes each sinogram value
-back along its ray into the image volume.
-
-\subsection{Forward and Backprojection Implementation}
-
-For the $\bm{z}$-step of ADMM with quadratic data fidelity
-$D(\bm{y}, A\bm{x}) = \frac{1}{2}\|A\bm{x} - \bm{y}\|_2^2$, the proximal operator
-has the closed-form solution:
-\begin{equation}
-    \operatorname{Prox}_{\frac{1}{\mu}D}(\bm{v})
-        = \left(\mu A^T A + I\right)^{-1}\!\left(\mu A^T \bm{y} + \bm{v}\right),
-    \label{eq:data-prox}
-\end{equation}
-which requires an iterative solver. In the TFPnP implementation \citep{Wei2022TFPnP},
-a single gradient step is used as a tractable approximation:
-\begin{equation}
-    \bm{z}^{k+1} \approx \bm{v} - \frac{1}{\mu} A^T\!\left(A\bm{v} - \bm{y}\right),
-    \label{eq:data-grad-step}
-\end{equation}
-where $\bm{v} = \bm{x}^{k+1} + \bm{u}^k$. This is implemented as two tomosipo operator
-calls and is fully differentiable.
-
-\subsection{Tomosipo Exploration and Validation}
-\label{sec:tomosipo-exploration}
-
-% AIM: Justify WHY you did a hands-on tomosipo exploration before
-% implementing TFPnP, and explain what each experiment taught you.
-% This maps to Ander's Milestone 1: "Can you define a geometry,
-% forward project an arbitrary image, add noise, and reconstruct?"
-
-Before implementing TFPnP, a systematic exploration of tomosipo was carried out
-(documented in \texttt{notebooks/01\_tomosipo\_fundamentals.ipynb}) to build
-operational understanding of the CT simulation pipeline. This step was essential for
-two reasons: first, the TFPnP paper uses TorchRadon \citep{Ronchetti2020} as its CT
-backend, whereas this project uses tomosipo/ASTRA; verifying that the same physical
-operations (forward projection, backprojection, noise simulation) behave equivalently
-in the new backend is a prerequisite for a valid reproduction. Second, every component
-of the TFPnP algorithm---the data-consistency $\bm{z}$-step~\eqref{eq:data-grad-step},
-the reward function, and the training loop---depends on correct and efficient use of
-$A$ and $A^T$, so fluency with the operator interface is necessary before writing any
-model code.
-
-The exploration proceeded in three stages:
-
-\paragraph{Stage 1: Geometry and operator fundamentals.}
-Cone-beam and parallel-beam geometries were defined and compared. Cone-beam geometry
-(\texttt{ts.cone}) was used initially for general 3D exploration, as it represents the
-most common clinical CT configuration and exercises the full tomosipo API. The
-exploration then moved to 2D parallel-beam geometry (\texttt{ts.parallel} with a
-single detector row), which matches the TFPnP experimental setup: 30 projection angles
-over an $N \times N$ image with $N$ detector pixels. The distinction matters because
-parallel-beam projections are shift-invariant (enabling analytical FBP inversion via
-the Central Slice Theorem), whereas cone-beam projections are not, requiring the FDK
-approximation \citep{Feldkamp1984}. All subsequent project experiments use parallel-beam
-geometry to maintain consistency with the reference paper.
-
-\paragraph{Stage 2: SIRT implementation from scratch.}
-The SIRT algorithm was implemented manually using the tomosipo operator interface,
-following the update rule from \cref{sec:classical-reconstruction}. This served two
-purposes: (i)~it verified that the forward operator $A$ and its adjoint $A^T$ behave
-correctly (the reconstruction converges to the ground truth for noiseless, fully sampled
-data); and (ii)~it confirmed that the GPU-accelerated PyTorch path through tomosipo
-produces identical results to the NumPy path, which is important since TFPnP training
-requires GPU tensors throughout. The manual implementation was validated against
-\texttt{ts\_algorithms.sirt} and ASTRA's internal \texttt{SIRT3D\_CUDA}, with negligible
-differences in all cases.
-
-\paragraph{Stage 3: Noise simulation and baseline reconstruction.}
-Gaussian noise at the three levels used in the TFPnP paper ($\sigma \in \{5\%, 7.5\%,
-10\%\}$) was added to sparse-view (30-angle) sinograms. Four reconstruction algorithms
-were then compared: FBP (via \texttt{tsa.fbp}), SIRT, Nesterov-accelerated least squares
-(NAG\_LS), and TV minimisation (via \texttt{tsa.tv\_min2d}). PSNR and SSIM were computed
-for each, establishing the baseline performance landscape against which TFPnP will be
-evaluated. The key observations were: (i)~FBP from 30 views produces severe streak
-artefacts and low PSNR, confirming the ill-posedness described in
-\cref{sec:ill-posedness}; (ii)~TV minimisation substantially outperforms unregularised
-methods but introduces staircase artefacts; (iii)~the quantitative gap between TV and
-the TFPnP results reported in \cref{tab:ct-results} defines the improvement that a
-learned method must achieve. These baseline reconstructions also serve as the reference
-images for the qualitative comparison figures in \cref{chap:results}.
+% Insert Fig 4.1 here -- system pipeline diagram (TikZ, NEEDS TO BE MADE)
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/04/pipeline_diagram.pdf}
+%     \caption{End-to-end pipeline: from raw LIDC-IDRI slices through
+%     sparse-view sinogram simulation, an ADMM environment driven by
+%     a ResNet-18 policy network, to the reconstructed image. The
+%     policy outputs $(\sigma_k, \mu_k)$ at every $k$th decision step
+%     and a termination flag.}
+%     \label{fig:pipeline}
+% \end{figure}
 
 
 % -----------------------------------------------------------
-\section{Dataset Pipeline}
-\label{sec:dataset-pipeline}
+\section{Forward Model and ADMM Environment}
+\label{sec:admm-env}
 % -----------------------------------------------------------
 
-% TODO: Fill in once you have decided on dataset and implemented loading.
+% TODO ¶1 [~150 w] Geometry and operator
+% Parallel-beam, 30 angles equispaced over [0, pi], detector with
+% 724 pixels, image domain 512x512 in mu-units (water = 1.0). Why
+% parallel-beam: matches paper, simplifies vs cone-beam. Detector
+% resolution upscaled vs the paper's 182 because the paper used
+% 128x128 images. Forward operator A built via tomosipo
+% (Hendriksen2021), differentiable end-to-end through ts_algorithms.
+% A and A^T never materialised as dense matrices.
+%
+% Insert Fig 4.2 here (operator action + adjoint visualisation).
+
+% TODO ¶2 [~150 w] Data-consistency step
+% Standard PnP-ADMM uses the closed-form quadratic prox; this is too
+% expensive at 512^2 so the paper's single-gradient approximation
+% (Wei2022TFPnP eq. data-grad-step) is adopted:
+%     z^(k+1) = v - (1/mu) A^T (A v - y)   with v = x^(k+1) + u^k
+% Two tomosipo operator calls; fully differentiable.
+
+% TODO ¶3 [~100 w] Episode structure as an MDP environment
+% Episode = N decision steps, each comprising m PnP-ADMM iterations
+% under fixed (sigma, mu). State exposed to the policy is the
+% current x, the running residual ||Ax - y||, and the iteration count.
+% Reward at decision t is r_t = PSNR(x_t) - PSNR(x_{t-1}) - eta
+% with eta = 0.05. Default m = 5, N = 6 (30 ADMM iterations total),
+% matching the paper.
+
+% Insert Fig 4.3 here -- single ADMM iteration breakdown
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/04/01_op_forward_adjoint.pdf}
+%     \caption{Forward operator $A$ (Radon projection) and its adjoint
+%     $A^T$ (backprojection) for a representative LIDC slice. Both are
+%     called twice per ADMM step in the data-consistency update
+%     \eqref{eq:data-grad-step}.}
+%     \label{fig:operator}
+% \end{figure}
 
 
 % -----------------------------------------------------------
-\section{Model Architecture}
-\label{sec:model-architecture}
+\section{DRUNet Denoiser}
+\label{sec:drunet}
 % -----------------------------------------------------------
 
-% TODO: Fill in once you have implemented the model.
+% TODO ¶1 [~150 w] Architecture and weights
+% DRUNet (cite KAIR/Zhang2017DnCNN successor): encoder-decoder with
+% residual blocks and a noise-level input channel sigma. Pretrained
+% on BSD400 natural-image patches (this is the "off-the-shelf"
+% property -- no CT fine-tuning). Weights from the public KAIR
+% release (drunet_gray.pth, ~32M params).
+
+% TODO ¶2 [~100 w] CT-domain adaptation
+% Two non-trivial integration details:
+%   (a) sigma normalisation: divide raw sigma by 50 (paper convention,
+%       matches DRUNet's training distribution) rather than the
+%       intuitive /255.
+%   (b) Per-image input auto-normalisation: LIDC mu-values lie in
+%       [0, ~2.45] not [0, 1]; rescale each input to unit dynamic
+%       range, denoise, then rescale back.
+%   (c) Skip connection placement bug uncovered during development:
+%       skips must be added BEFORE the up-blocks, not after the
+%       ConvTranspose layers.
+
+% TODO ¶3 [~50 w] Validation
+% Notebook 07 verifies DRUNet on synthetic Gaussian noise across
+% sigma in {1, 2.5, 5, 10} on LIDC inputs; results in Appendix.
+%
+% Insert Fig 4.4 here (DRUNet sigma sweep).
+
+% Insert Fig 4.4 -- DRUNet sigma sweep
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/05/04_drunet_sigma_sweep.pdf}
+%     \caption{DRUNet output across input $\sigma$ on a representative
+%     LIDC slice. Above $\sigma \approx 5$ the network over-smooths
+%     lung textures; this motivates the constrained range
+%     $\sigma \in [1, 5]$ used during policy training
+%     (\cref{sec:calibration}).}
+%     \label{fig:drunet-sweep}
+% \end{figure}
 
 
 % -----------------------------------------------------------
-\section{Training Procedure}
-\label{sec:training-procedure}
+\section{Policy Network and Training Algorithm}
+\label{sec:policy-network}
 % -----------------------------------------------------------
 
-% TODO: Fill in during/after training.
+% TODO ¶1 [~150 w] Architecture
+% ResNet-18 feature extractor (paper-faithful, ImageNet-init).
+% Input channels: current reconstruction x_t plus auxiliary maps
+% (iteration index broadcast, noise-level broadcast) = 3 channels.
+% Three output heads:
+%   - pi_1 (termination): Bernoulli logit
+%   - pi_2 (parameters): two continuous outputs squashed via
+%       sigmoid to (sigma_k in [1,5], mu_k in [10,100])
+%   - V (critic): scalar value
+% Total ~11M parameters.
+%
+% Insert Fig 4.5 here (policy network architecture).
+
+% TODO ¶2 [~150 w] A2C-style objective
+% Three loss terms:
+%   - L_critic = (V(s_t) - R_t)^2     (Wei2022 eq. 15)
+%   - L_pi1 = -log pi_1(a_t|s_t) * A_t    (REINFORCE)
+%   - L_pi2 = -R_t                        (reparameterised through
+%                                          the differentiable env)
+% A_t = R_t - V(s_t) is the advantage.
+% pi_2 warmup: critic trains for 5 epochs while pi_2 stays at
+% initialisation. Without warmup the critic baseline is meaningless
+% and pi_2 gradients are catastrophically noisy.
+
+% TODO ¶3 [~100 w] Replay buffer
+% Episodes pushed to a CPU-side replay buffer, sampled in
+% mini-batches of 8 transitions for gradient updates. Each
+% transition ~6 MB (two 512x512 float32 maps + scalars). Buffer
+% size = 5,000 (48G RAM headroom on A100 nodes) or 10,000 (full
+% dataset, 80G nodes). FIFO eviction.
+
+% TODO ¶4 [~100 w] Stability measures (introduce in passing,
+% justify properly in Section 4.5)
+% Even with warmup, pi_2 training is fragile. Three measures
+% additional to the paper:
+%   - L_pi2 scaled by 0.01 before .backward()
+%   - gradient clipping at 0.1 for pi_2 parameters
+%   - pi_2 updated every OTHER gradient step
+% These are documented in metrics_history.json per run.
 
 
 % -----------------------------------------------------------
-\section{Baseline Implementations}
-\label{sec:baselines}
+\section{Hyperparameters and Divergences from the Paper}
+\label{sec:hyperparameters}
 % -----------------------------------------------------------
 
-% TODO: Describe how you ran the baselines.
+% TODO [~400 w with table]
+% Open with ONE paragraph saying the parameter choices fall into
+% three camps: (i) paper-faithful, (ii) memory-constrained, (iii)
+% stability-driven. Then the table below does the heavy lifting.
+% Follow with TWO short paragraphs:
+%   - Memory paragraph: why batch 48 -> 8, n_grad_steps 10 -> 4
+%     (512^2 image vs paper's 128^2; A100 80GB still binding).
+%   - Stability paragraph: why no LR schedule, why pi_2 warmup,
+%     scaling, clipping, alternating updates -- foreshadow Ch.6.
+
+% Insert Table 4.1 -- hyperparameters
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Hyperparameter choices and divergences from
+             \citet{Wei2022TFPnP}.}
+    \label{tab:hyperparameters}
+    \begin{tabular}{lccl}
+        \toprule
+        \textbf{Parameter} & \textbf{Paper} & \textbf{This work} & \textbf{Rationale} \\
+        \midrule
+        Image size              & $128 \times 128$ & $512 \times 512$ & LIDC native res. \\
+        Detector pixels         & 182  & 724  & Scales with image. \\
+        Views                   & 30   & 30   & Paper-faithful. \\
+        $m, N$                  & 5, 6 & 5, 6 & Paper-faithful. \\
+        $\eta$ (reward penalty) & 0.05 & 0.05 & Paper-faithful. \\
+        $\gamma$ (discount)     & 0.99 & 0.99 & Paper-faithful. \\
+        Batch size              & 48   & 8    & Memory at $512^2$. \\
+        $n_\text{grad}$         & 10   & 4    & Memory + $\pi_2$ cost. \\
+        $\sigma$ range          & (1, 50) & (1, 5) & DRUNet calibration. \\
+        $\mu$ range             & --     & (10, 100) & ADMM convergence. \\
+        $\text{lr}_\text{policy}$  & $10^{-4}$ & $3\times10^{-5}$ & Stability at $512^2$. \\
+        $\text{lr}_\text{critic}$  & $5\times10^{-5}$ & $10^{-4}$ & Convention. \\
+        LR schedule             & halve @ 1600 & none & Shorter training. \\
+        $\pi_2$ warmup          & --   & 5 ep & Stabilises $\pi_2$. \\
+        $\pi_2$ loss scale      & --   & 0.01 & Prevents explosion. \\
+        $\pi_2$ grad-clip       & --   & 0.1  & Stability. \\
+        $\pi_2$ update freq     & every & every other & Stability. \\
+        Replay buffer           & --   & 5k / 10k & Memory-bound. \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+% -----------------------------------------------------------
+\section{$\sigma/\mu$ Calibration and Domain Mismatch}
+\label{sec:calibration}
+% -----------------------------------------------------------
+
+% TODO ¶1 [~120 w] sigma/mu range narrowing
+% Paper uses sigma in (1, 50) (DRUNet/CIFAR-scale) but for LIDC
+% mu-units in [0, 2.45] this over-smooths above sigma ~ 5
+% (Fig 4.4). Sigma range narrowed to (1, 5). Mu range (10, 100)
+% chosen empirically from ADMM convergence in notebook 05. Both
+% ranges are CLI-configurable -- the sigma-floor extension (run 05)
+% varies the lower bound. The range narrowing is itself a
+% contribution: "denoiser-domain calibration" rather than a hack.
+
+% TODO ¶2 [~80 w] Domain mismatch caveat
+% The paper trains the denoiser on PASCAL VOC natural images and
+% tests cross-domain on lung CT. This work trains AND tests on
+% LIDC-IDRI -- this is an in-domain advantage that inflates
+% absolute PSNR numbers relative to the paper. The point is
+% acknowledged here, again in Ch.5 results, and discussed in Ch.6.
+% Frame as: "we test the upper bound of TFPnP when trained
+% in-domain, complementing the paper's cross-domain claim."
+
+
+% -----------------------------------------------------------
+\section{Data, Baselines, Metrics}
+\label{sec:data-baselines}
+% -----------------------------------------------------------
+
+% TODO [~150 w] Compress all three into one section.
+%
+% Data: LIDC-IDRI via LION's deterministic patient-level split:
+%   3,300 train / 401 val / 389 test, no patient overlap. Image
+%   range varies per patient. Mu-units, [0, ~2.45].
+%
+% Baselines:
+%   - FBP (LION fbp), classical reference.
+%   - TV-regularised ADMM (LION tv_min), classical regularised
+%     reference.
+%   - Fixed PnP-ADMM (sigma=1.5, mu=20 grid-searched), ablation
+%     of TFPnP showing the value of the policy.
+%   - (Mention) LPD / FBPconv as planned learned baselines if
+%     time permits -- otherwise listed as future work in Ch.7.
+%
+% Metrics:
+%   PSNR (paper-comparable), SSIM (structural quality), HaarPSI
+%   (perceptual; via piq library; recommended by Ander).
+%   Three noise levels (5/7.5/10%) evaluated separately on the
+%   held-out 389-image test set.

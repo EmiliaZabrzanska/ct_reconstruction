@@ -2,29 +2,26 @@
 %  Chapter 5: Evaluation
 % ============================================================
 %
-% AIM: Present your experimental results clearly and analyse them
-%      critically. ~6-8 pages.
+%  TARGET: ~1,400 words. Tables and figures do the heavy
+%  lifting; prose is mostly framing + interpretation. Captions
+%  count toward word budget so keep them ~30 words.
 %
-% CONTENTS:
-%   5.1 Experimental Setup (dataset, geometry, noise, hardware, hyperparams)
-%   5.2 Baseline Comparison (FBP, TV, SIRT vs paper's baselines)
-%   5.3 Quantitative Metrics (PSNR, SSIM table -- your results vs paper)
-%   5.4 Qualitative Analysis (reconstruction grids, difference maps, zoom-ins)
-%   5.5 Ablation Studies (if time: iterations, denoiser choice, policy viz)
-%   5.6 Discussion (how close to paper, what explains gaps, what you'd change)
+%  STRATEGY: lead with the numbers, follow with the picture.
+%  Be quantitative first, qualitative second.
 %
-% FIGURES (this chapter should be figure-heavy):
-%   - Table 5.1: Main quantitative results (PSNR, SSIM)
-%   - Fig 5.1: Reconstruction grid (GT, FBP, TV, TFPnP) for 2-3 images
-%   - Fig 5.2: Difference maps
-%   - Fig 5.3: PSNR vs noise level plot
-%   - Fig 5.4: Learned parameter schedules (sigma_k, mu_k vs iteration)
-%   - Fig 5.5: Convergence: PSNR vs iteration for fixed vs learned policy
+% ============================================================
 %
-% TIPS:
-%   - Every figure must be referenced and discussed in the text
-%   - Be honest -- if results don't match the paper, explain why
-%   - Quantitative first, then qualitative to support the numbers
+%  TARGET STRUCTURE (5 sections, ~1,400 w total):
+%
+%   5.1 Setup recap              100 w  (cross-ref Ch.4)
+%   5.2 Headline quantitative    400 w  (main table + paper compare)
+%   5.3 Per-run training and policy behaviour   400 w
+%   5.4 Qualitative reconstructions     250 w
+%   5.5 Extensions (sigma-floor, m/N, alt rewards)   250 w
+%
+%  Do NOT have a "discussion" section here -- Chapter 6 is
+%  entirely discussion. This chapter sticks to what was measured.
+%
 % ============================================================
 
 \chapter{Evaluation}
@@ -35,66 +32,229 @@
 \label{sec:experimental-setup}
 % -----------------------------------------------------------
 
-% TODO: Describe your exact experimental configuration.
+% TODO [~100 w]
+% Cross-reference Chapter 4 for full setup. Re-state only:
+%   - Compute: CSD3 A100-SXM4-80GB.
+%   - 30-view parallel-beam, 512x512 LIDC slices, mu-units.
+%   - 30 ADMM iterations per reconstruction (N=6 decisions x m=5).
+%   - Mixed noise sampling per episode {5%, 7.5%, 10%}; evaluation
+%     on each noise level separately on the 389-image test set.
+%   - Metrics: PSNR, SSIM, HaarPSI (via piq).
+%   - All numbers averaged over 389 test images, +/- 1 std dev.
 
 
 % -----------------------------------------------------------
-\section{Baseline Comparison}
-\label{sec:baseline-comparison}
+\section{Headline Quantitative Results}
+\label{sec:quantitative-results}
 % -----------------------------------------------------------
 
-% TODO: Report your baseline results (FBP, TV, SIRT).
+% TODO ¶1 [~50 w] One framing sentence. Insert Table 5.1.
 
-
-% -----------------------------------------------------------
-\section{Quantitative Metrics}
-\label{sec:quantitative-metrics}
-% -----------------------------------------------------------
-
-% TODO: Main results table and analysis.
-
-% Template:
+% Insert Table 5.1 -- main results table
+% This is the central deliverable of the chapter.
+%
 % \begin{table}[htbp]
 %     \centering
-%     \caption{Quantitative comparison. PSNR (dB) / SSIM on test set.}
+%     \small
+%     \caption{Test-set PSNR (dB) / SSIM / HaarPSI across noise levels.
+%     Mean over 389 test images. Best learned result shown in bold.}
 %     \label{tab:main-results}
-%     \begin{tabular}{lcccccc}
+%     \begin{tabular}{l ccc ccc ccc}
 %         \toprule
-%         & \multicolumn{2}{c}{\textbf{5\% noise}}
-%         & \multicolumn{2}{c}{\textbf{7.5\% noise}}
-%         & \multicolumn{2}{c}{\textbf{10\% noise}} \\
-%         \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
-%         \textbf{Method} & PSNR & SSIM & PSNR & SSIM & PSNR & SSIM \\
+%         & \multicolumn{3}{c}{\textbf{5\% noise}}
+%         & \multicolumn{3}{c}{\textbf{7.5\% noise}}
+%         & \multicolumn{3}{c}{\textbf{10\% noise}} \\
+%         \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+%         \textbf{Method} & PSNR & SSIM & HaarPSI & PSNR & SSIM & HaarPSI & PSNR & SSIM & HaarPSI \\
 %         \midrule
-%         FBP     & -- & -- & -- & -- & -- & -- \\
-%         TV      & -- & -- & -- & -- & -- & -- \\
-%         TFPnP   & -- & -- & -- & -- & -- & -- \\
-%         \midrule
-%         TFPnP (paper) & 24.50 & -- & 24.23 & -- & 23.72 & -- \\
+%         FBP           &  &  &  &  &  &  &  &  &  \\
+%         TV            &  &  &  &  &  &  &  &  &  \\
+%         Fixed PnP     &  &  &  &  &  &  &  &  &  \\
+%         \textbf{TFPnP (ours)} &  &  &  &  &  &  &  &  &  \\
 %         \bottomrule
 %     \end{tabular}
 % \end{table}
 
+% TODO ¶2 [~150 w] Read the table.
+% Three headline numbers:
+%   - TFPnP vs Fixed PnP-ADMM: +X.X dB average (policy is doing work).
+%   - TFPnP vs TV: +Y.Y dB average (learned > hand-crafted prior).
+%   - TFPnP vs FBP: +Z dB (sanity baseline).
+% Note HaarPSI gains are smaller than PSNR/SSIM (perceptual ceiling
+% effect; mention briefly, expand in Ch.6).
+
+% TODO ¶3 [~150 w] Comparison to the paper's Table 5
+% Insert Table 5.2 (side-by-side this work vs paper) OR reference
+% Table 3.1 directly.
+% Headline numbers from this work vs paper:
+%   - At each noise level, report (this work) / (paper).
+%   - Note the IN-DOMAIN advantage: this work's numbers may exceed
+%     the paper's due to LIDC-trained denoiser. State explicitly.
+%   - Note GEOMETRY differences (724 vs 182 detectors, 512^2 vs
+%     128^2) make absolute PSNR not directly commensurable.
+%   - Note missing baselines: no LPD or FBPconv comparison in this
+%     work (deferred to future work; flagged as gap in Ch.6).
+
+% TODO ¶4 [~50 w] Reference Figure 5.1 (metrics vs noise level).
+% State key reading: TFPnP advantage holds across all three noise
+% levels, with relative gap to Fixed PnP slightly widening at
+% higher noise (policy is doing more adaptive work).
+
+% Insert Fig 5.1 here -- metrics vs noise
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/10/03_metrics_vs_noise.pdf}
+%     \caption{Test-set PSNR as a function of input noise level for
+%     the four methods. TFPnP maintains its advantage across the
+%     range; the relative gap to Fixed PnP-ADMM widens at higher
+%     noise, indicating that policy adaptation contributes more
+%     when reconstruction is harder.}
+%     \label{fig:metrics-vs-noise}
+% \end{figure}
+
 
 % -----------------------------------------------------------
-\section{Qualitative Analysis}
-\label{sec:qualitative-analysis}
+\section{Training Dynamics and Policy Behaviour}
+\label{sec:training-policy}
 % -----------------------------------------------------------
 
-% TODO: Reconstruction grids, difference maps, zoom-ins.
+% TODO ¶1 [~100 w] Run history overview
+% Table 5.3 summarises the runs (config matrix). Briefly:
+%   - run_01 (20 pat x 20 ep): smoke test, pipeline shake-down.
+%   - run_02 (100 pat x 50 ep): STABLE BASELINE, best val 26.31 dB
+%     @ ep 33. This is the production checkpoint.
+%   - run_03 (3,300 pat x 5 ep): full-data scaling experiment;
+%     pi_2 instability + the depth-vs-breadth finding (see Ch.6).
+%   - run_04 (250 pat x 80 ep): depth-and-breadth balance attempt.
+%     [Status as of writing: complete/in-progress/failed -- update.]
+%   - run_05-08: extensions, covered in Section 5.5.
+
+% Insert Table 5.3 (run matrix). Compact: name, patients, epochs,
+% best-val PSNR, status. ~60 words.
+
+% TODO ¶2 [~150 w] Training curves for the main run (run_02)
+% Reference Figure 5.2 (training curves). Read:
+%   - PSNR rises from initialisation ~23.76 dB to peak ~26.19 dB
+%     between epochs 30-40, then degrades slightly.
+%   - Best-val checkpoint mechanism captures the peak; this is
+%     why we use best-val rather than last-epoch checkpoint.
+%   - Critic loss stabilises after pi_2 warmup ends at epoch 5.
+%   - pi_2 loss is visibly noisier post-warmup -- the stability
+%     measures of Section 4.4 reduce but do not eliminate this.
+
+% Insert Fig 5.2 -- training curves
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/run_02_pat_100/training_curves.pdf}
+%     \caption{Training and validation metrics over 50 epochs for the
+%     main 100-patient run. PSNR peaks around epoch 33 (best-val
+%     checkpoint); subsequent degradation motivates the best-val
+%     selection mechanism rather than last-epoch evaluation.}
+%     \label{fig:training-curves}
+% \end{figure}
+
+% TODO ¶3 [~150 w] Per-image and policy-behaviour panels
+% Reference Figures 5.3 and 5.4.
+%
+% Fig 5.3 (per-image PSNR): TFPnP wins on virtually every individual
+% test image vs Fixed PnP. Quantify: X/389 images. This is strong
+% evidence that the gain is systematic, not driven by a few outliers.
+%
+% Fig 5.4 (policy behaviour): for two representative slices, plot
+% sigma_k and mu_k trajectories across the 6 decision steps.
+% Findings:
+%   - sigma trajectory often presses the 1.0 floor at multiple
+%     iterations -- motivates the sigma-floor extension in Sec 5.5.
+%   - mu trajectory is image-specific in well-converged runs
+%     (run_02), and sawtooth-uniform in under-converged runs
+%     (run_03). Interpret as: the policy "becomes a fixed
+%     algorithm" when training is incomplete. Expand in Ch.6.
+
+% Insert Fig 5.3 -- per-image PSNR
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=0.85\textwidth]{figures/run_02_pat_100/per_image_psnr.pdf}
+%     \caption{Per-image test-set PSNR, sorted by Fixed PnP-ADMM
+%     score. TFPnP improves over Fixed PnP on the vast majority of
+%     images, indicating systematic benefit rather than outlier-driven gain.}
+%     \label{fig:per-image-psnr}
+% \end{figure}
+
+% Insert Fig 5.4 -- policy behaviour
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/run_02_pat_100/policy_behaviour.pdf}
+%     \caption{Learned $(\sigma_k, \mu_k)$ schedules across the
+%     $N=6$ decision steps for two representative validation slices.
+%     The policy presses the $\sigma$ floor at multiple iterations
+%     and produces image-specific $\mu$ trajectories.}
+%     \label{fig:policy-behaviour}
+% \end{figure}
 
 
 % -----------------------------------------------------------
-\section{Ablation Studies}
-\label{sec:ablations}
+\section{Qualitative Reconstructions}
+\label{sec:qualitative}
 % -----------------------------------------------------------
 
-% TODO: If time permits.
+% TODO [~250 w]
+% Reference Figure 5.5: reconstruction grid for 2 representative
+% slices (one lung-bearing, one solid-tissue; use is_lung_slice
+% helper). Columns: GT, FBP, TV, Fixed PnP, TFPnP. Optional bottom
+% row: difference maps to GT for the same slices.
+%
+% Read in prose:
+%   - FBP: streak-dominated, edges severely degraded.
+%   - TV: clean structure but visible staircase artefact in
+%     low-contrast regions; lung textures lost.
+%   - Fixed PnP: better edges than TV but residual undersampling
+%     artefacts visible in low-density regions.
+%   - TFPnP: best structural fidelity; remaining issue is slight
+%     over-smoothing of fine lung texture (DRUNet artefact,
+%     discussed in Ch.6).
+%
+% End with a sentence about HaarPSI: the perceptual gap is
+% smaller than the PSNR gap because residual smoothing penalises
+% TFPnP perceptually even though pixel error is lower.
+
+% Insert Fig 5.5 -- reconstruction grid
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/10/01_metrics_comparison.pdf}
+%     \caption{Reconstruction comparison on representative LIDC test
+%     slices at 7.5\% noise. Columns: ground truth, FBP (30 views),
+%     TV, Fixed PnP-ADMM ($\sigma{=}1.5, \mu{=}20$), TFPnP (this
+%     work). TFPnP preserves structural fidelity but slightly
+%     over-smooths fine lung texture.}
+%     \label{fig:recon-grid}
+% \end{figure}
 
 
 % -----------------------------------------------------------
-\section{Discussion}
-\label{sec:discussion}
+\section{Extensions}
+\label{sec:extensions}
 % -----------------------------------------------------------
 
-% TODO: Critical analysis.
+% TODO [~250 w total, one short paragraph per extension]
+% These are the runs 05-08. Each paragraph reports the result
+% with one number; the interpretation goes in Ch.6.
+
+% TODO ¶1 [~80 w] sigma-floor extension (run_05)
+% Motivation: run_02 policy pressed sigma = 1.0 floor frequently.
+% Lower the floor to 0.5 and retrain.
+% Result: [report whether PSNR improves or degrades; the answer
+% is informative either way -- if improves, range was over-tight;
+% if degrades, DRUNet near-identity at low sigma is not useful].
+% State number with +/- std.
+
+% TODO ¶2 [~80 w] m / N tradeoff (run_06)
+% m = 3, N = 10 (same 30 total ADMM iterations but finer-grained
+% policy control). Result: [report PSNR; interpret as "more
+% decisions help / hurt"].
+
+% TODO ¶3 [~80 w] Alternative reward signals (run_07, run_08)
+% Replace PSNR delta with SSIM delta (run_07) and HaarPSI delta
+% (run_08). Report all three metrics under each reward; key
+% interpretation: does optimising for SSIM/HaarPSI improve
+% perceptual quality at the cost of PSNR, or does PSNR-reward
+% dominate across all metrics? Plot if space.

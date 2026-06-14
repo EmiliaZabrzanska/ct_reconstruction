@@ -2,16 +2,51 @@
 %  Appendix
 % ============================================================
 %
-% POSSIBLE CONTENTS:
-%   A.1 Additional Reconstruction Examples
-%   A.2 Hyperparameter Details (full table)
-%   A.3 Derivations (data-consistency proximal step)
-%   A.4 CSD3 Configuration (SLURM scripts, module loads, CUDA notes)
-%   A.5 Dataset Download Instructions (Thomas's method from Slack)
+%  TARGET: ~150 words. Appendix counts toward 7,000 word limit.
+%  Use sparingly. Only include material referenced from the
+%  main text.
 %
-% TIPS:
-%   - Only add appendices if referenced from the main text
-%   - Don't dump code here -- it lives in the repo
+%  RECOMMENDED CONTENT:
+%   A.1  Tomosipo validation summary (cross-referenced from
+%        Section 4.1) -- ~80 words.
+%        Brief table or 2 sentences describing the four baseline
+%        reconstructions verified against ASTRA references.
+%
+%   A.2  DRUNet Gaussian validation summary (cross-referenced
+%        from Section 4.3) -- ~70 words.
+%        Brief: PSNR of DRUNet on Gaussian-corrupted LIDC inputs
+%        at sigma in {1, 2.5, 5, 10}, validating range choice.
+%
+%  THINGS THAT DO NOT GO HERE (each would blow the budget):
+%   - Full hyperparameter table (already in Section 4.5).
+%   - SLURM scripts or CSD3 module loads (in the repository).
+%   - Code listings of any kind (in the repository).
+%   - Architecture diagrams (in Chapter 4 if at all).
+%   - Extra reconstruction figures (caption cost too high).
+%
+%  REPOSITORY POINTER:
+%   At the end of A.1 or A.2, state:
+%     "Full reproduction code, including notebook 01-11 series
+%      and the ct_tfpnp Python package, is available at
+%      [REPO URL]."
+%
 % ============================================================
 
-% TODO: Fill in as needed.
+% TODO: Decide whether to include appendices at all. The 150-word
+% budget is so tight that omitting the appendix entirely buys
+% headroom elsewhere. If kept, follow the structure above.
+
+\chapter{Supplementary Material}
+\label{app:supplementary}
+
+% TODO if kept
+
+\section{Tomosipo Operator Validation}
+\label{app:tomosipo}
+
+% TODO ~80 words.
+
+\section{DRUNet Gaussian Validation}
+\label{app:drunet}
+
+% TODO ~70 words.

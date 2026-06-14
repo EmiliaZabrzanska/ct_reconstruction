@@ -2,45 +2,77 @@
 %  Chapter 1: Introduction
 % ============================================================
 %
-% AIM: Motivate the project, state the problem, and outline the report.
-%      Readable by someone with a general ML background but no CT knowledge.
-%      ~2-3 pages.
+%  TARGET: ~550 words. Write LAST, once you know the headline numbers.
 %
-% CONTENTS:
-%   1.1 Clinical motivation for low-dose CT
-%       - Why CT matters (medical imaging workhorse)
-%       - Why dose reduction matters (radiation risk)
-%       - The reconstruction quality vs dose trade-off
+%  REPORT-WIDE WORD BUDGET (7,000 total):
+%     Ch.1 Introduction          550
+%     Ch.2 Background            700
+%     Ch.3 Related Work          600
+%     Ch.4 Methods             2,200
+%     Ch.5 Evaluation          1,400
+%     Ch.6 Discussion          1,100
+%     Ch.7 Conclusion            300
+%     Appendix                   150
+%     TOTAL                    7,000
 %
-%   1.2 The reconstruction problem in one paragraph
-%       - Forward model y = Ax + noise (informal, no equations yet)
-%       - Classical methods struggle with sparse data
-%       - Learned methods can help
+%  Captions, tables, appendix all count. References + AI-tool
+%  declaration do NOT count.
 %
-%   1.3 This project
-%       - Paper being reproduced: TFPnP (Wei et al., JMLR 2022)
-%       - Why this paper: bridges PnP and RL, generic framework
-%       - Implementation target: integrate into LION toolbox
-%       - Dataset: specify which one you use
+% ============================================================
 %
-%   1.4 Contributions
-%       - Reproduction of TFPnP sparse-view CT experiments
-%       - Implementation within LION/tomosipo (different CT backend)
-%       - Comparison against classical baselines (FBP, TV) and LPD
-%       - [Optional] Extension to cone-beam geometry
+%  CONTENT (write in this order, one short paragraph each):
 %
-%   1.5 Report outline
-%       - One sentence per chapter
+%  ¶1 - Clinical motivation (~120 w)
+%       CT is the workhorse of diagnostic imaging; radiation dose
+%       is the limiting factor; sparse-view acquisition is the
+%       dose-reduction lever; it produces an ill-posed inverse
+%       problem.
 %
-% FIGURES: None needed. Keep it clean prose.
+%  ¶2 - The reconstruction landscape in one paragraph (~100 w)
+%       y = Ax + eta (informal); FBP fails under undersampling;
+%       classical regularisers (TV) help but bake in priors;
+%       learned methods can encode richer priors; two families:
+%       end-to-end learned (LPD, FBPconv) vs plug-and-play.
 %
-% TIPS:
-%   - Write this LAST (after all other chapters)
-%   - Keep it short and punchy
-%   - Don't repeat the abstract
+%  ¶3 - Why TFPnP (~110 w)
+%       Wei et al. 2022 (JMLR): PnP-ADMM with a learned RL policy
+%       that adaptively tunes (sigma, mu) per iteration. Bridges
+%       classical PnP with modern RL. Key claim: a single off-the-
+%       shelf denoiser generalises across noise levels.
+%
+%  ¶4 - This project (~120 w)
+%       Faithful reproduction of TFPnP for sparse-view CT, in the
+%       LION toolbox (different CT backend than the paper's
+%       TorchRadon), with DRUNet as the off-the-shelf denoiser
+%       (vs the paper's IRCNN). LIDC-IDRI dataset, parallel-beam
+%       30-view geometry, three noise levels.
+%
+%  ¶5 - Contributions (~80 w, bullet OR prose)
+%       (i)   In-domain CT reproduction of the TFPnP RL framework.
+%       (ii)  DRUNet integration with sigma/mu range narrowing
+%             calibrated to mu-valued CT inputs.
+%       (iii) Three extensions: sigma-floor sensitivity, m/N
+%             tradeoff, alternative reward signals.
+%       (iv)  LION toolbox integration (engineering contribution).
+%
+%  ¶6 - Roadmap (~20 w)
+%       One sentence: "Chapter 2 covers CT reconstruction
+%       background; Chapter 3 surveys related work; Chapter 4
+%       describes the implementation; Chapter 5 reports results;
+%       Chapter 6 discusses findings; Chapter 7 concludes."
+%
+% ============================================================
+%  FIGURES: none. Keep it pure prose.
+% ============================================================
+%  FRAMINGS TO USE / AVOID:
+%   USE: "faithful reproduction", "in-domain", "off-the-shelf
+%        denoiser", "RL-tuned PnP".
+%   AVOID: claiming novelty of TFPnP itself; overstating LION
+%        contribution as research (it's engineering).
 % ============================================================
 
 \chapter{Introduction}
 \label{chap:introduction}
 
-% TODO: Write after all other chapters are complete.
+% TODO: write after Ch.5 + Ch.6 are finalised so headline numbers can
+% be quoted in the contributions paragraph.

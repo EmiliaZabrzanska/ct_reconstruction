@@ -1,18 +1,43 @@
-% Masters Project Report Template
-% Adapted for Emilia Zabrzanska – MPhil in Data Intensive Science
+% ============================================================
+%  Masters Project Report -- Emilia Zabrzanska, MPhil DIS
+% ============================================================
+%
+%  WORD BUDGET (7,000 main + 1,000 executive summary):
+%     Ch.1 Introduction           550
+%     Ch.2 Background             700
+%     Ch.3 Related Work           600
+%     Ch.4 Design & Impl.       2,200
+%     Ch.5 Evaluation           1,400
+%     Ch.6 Discussion           1,100
+%     Ch.7 Conclusion             300
+%     Appendix                    150
+%     TOTAL                     7,000
+%
+%  Counted: prose, figure captions, tables, appendix.
+%  Not counted: references, AI-tool declaration.
+%
+%  FIXES APPLIED vs original template:
+%   1. Duplicate \input{chapters/appendix} removed.
+%      Appendix now only inputs AFTER \appendix.
+%   2. Title placeholder filled (change to taste).
+%   3. \input order matches the chapter file names.
+%   4. Comment annotation noting Ch.6/Ch.7 distinction
+%      (Discussion vs Conclusion -- both files have
+%      \section{Summary} originally; renamed in stubs).
+%
+% ============================================================
 
 \documentclass[12pt,a4paper,twoside]{report}
 % append option ",openright" after "twoside" if you prefer each chapter
 % to start on a recto (odd-numbered) page in a double-sided printout
 
-\usepackage[pdfborder={0 0 0}]{hyperref}  % turns references into hyperlinks
-\usepackage[vmargin=20mm,hmargin=25mm]{geometry}  % adjust page margins
-\usepackage{graphicx} % allows inclusion of PDF, PNG and JPG images
-\usepackage{parskip}  % separate paragraphs with vertical space
-                      % instead of indenting their first line
-\usepackage{setspace} % for \onehalfspacing
-\usepackage{refcount} % for counting pages
-\usepackage{upquote}  % for correct quotation marks in verbatim text
+\usepackage[pdfborder={0 0 0}]{hyperref}
+\usepackage[vmargin=20mm,hmargin=25mm]{geometry}
+\usepackage{graphicx}
+\usepackage{parskip}
+\usepackage{setspace}
+\usepackage{refcount}
+\usepackage{upquote}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -26,18 +51,18 @@
 \usepackage{gensymb}
 \newtheorem{remark}{Remark}[chapter]
 
-\newif\ifsubmission % Boolean flag for distinguishing submitted/final version
+\newif\ifsubmission
 
 % ---------- PROJECT DETAILS ----------
-\title{CT Reconstruction with Learned Priors for Low-Dose Imaging}
+\title{Tuning-Free Plug-and-Play ADMM for Sparse-View CT:\\
+       A Reinforcement-Learning Approach with Off-the-Shelf Denoisers}
 \author{Emilia Zabrzanska}
 \date{July 2026}
 \newcommand{\candidatenumber}{1234N}
 \newcommand{\college}{Magdalene College}
 \newcommand{\coursethe}{Master of Philosophy in Data Intensive Science}
 
-% Uncomment for anonymous submission:
-% \submissiontrue
+% \submissiontrue  % uncomment for anonymous submission
 
 \begin{document}
 
@@ -45,12 +70,11 @@
 % COVER PAGE
 % =========================
 
-\begin{sffamily} % use a sans-serif font for the pro-forma cover sheet
+\begin{sffamily}
 
 \begin{titlepage}
 \makeatletter
 
-% University logo top-left, MPhil DIS logo top-right
 \noindent
 \makebox[\textwidth][s]{%
   \includegraphics[height=15mm]{logos/ucam-logo-colour-preferred.png}%
@@ -59,8 +83,6 @@
 }
 
 \ifsubmission
-
-% submission proforma cover page for blind marking
 \begin{Large}
 \vspace{20mm}
 Research project report title page
@@ -72,10 +94,7 @@ Candidate \candidatenumber
 \textsl{``\@title''}
 
 \end{Large}
-
 \else
-
-% regular cover page
 \begin{center}
 \Huge
 \vspace{\fill}
@@ -94,7 +113,6 @@ Candidate \candidatenumber
 \vspace{\fill}
 
 \end{center}
-
 \fi
 
 \vspace{\fill}
@@ -110,8 +128,6 @@ Submitted in partial fulfillment of the requirements for the\\
 
 Total page count: \pageref{lastpage}
 
-% calculate number of pages from
-% \label{firstcontentpage} to \label{lastcontentpage} inclusive
 \makeatletter
 \@tempcnta=\getpagerefnumber{lastcontentpage}\relax%
 \advance\@tempcnta by -\getpagerefnumber{firstcontentpage}%
@@ -127,19 +143,14 @@ Main chapters word count: 0 % <-- UPDATE AFTER FINAL WORDCOUNT
 
 Methodology used to generate that word count:
 
-[For example:
-
 \begin{quote}
 \begin{verbatim}
 $ make wordcount
 gs -q -dSAFER -sDEVICE=txtwrite -o - \
    -dFirstPage=6 -dLastPage=11 report-submission.pdf | \
 egrep '[A-Za-z]{3}' | wc -w
-467
 \end{verbatim}
 \end{quote}
-
-]
 
 \end{sffamily}
 
@@ -184,8 +195,10 @@ acknowledged in the text at the relevant sections.]
 % =========================
 
 \chapter*{Abstract}
+% TODO: write last. ~200 words. Distinct from the executive summary
+% (which is a separate 1,000-word document). The abstract here is
+% the short academic abstract.
 
-% Replace with your abstract
 This project investigates learned priors for low-dose computed
 tomography reconstruction, with particular focus on stability,
 regularisation behaviour, and quantitative performance relative
@@ -195,18 +208,11 @@ to classical reconstruction approaches.
 \chapter*{Acknowledgements}
 
 Optional acknowledgements go here.
-
 \fi
 
 \cleardoublepage
 
-% =========================
-% TABLE OF CONTENTS
-% =========================
-
 \tableofcontents
-% \listoffigures
-% \listoftables
 
 \cleardoublepage
 
@@ -222,8 +228,6 @@ Optional acknowledgements go here.
 \input{chapters/05_evaluation}
 \input{chapters/06_discussion}
 \input{chapters/07_conclusion}
-\input{chapters/appendix}
-
 \label{lastcontentpage}
 
 % =========================
@@ -236,20 +240,12 @@ Optional acknowledgements go here.
 % =========================
 % APPENDIX
 % =========================
+%  Note: appendix counts toward word limit but follows references
+%  here so it appears at the end. Keep extremely brief.
 
 \appendix
-
-\chapter{Additional Technical Details}
 \input{chapters/appendix}
 
 \label{lastpage}
 
 \end{document}
-
-% Example figure inclusion (uncomment and replace with your own figures)
-%\begin{figure}[ht]
-%    \centering
-%    \includegraphics[width=0.8\textwidth]{figures/example_plot.pdf}
-%    \caption{Quantitative comparison of reconstruction performance.}
-%    \label{fig:performance}
-%\end{figure}
