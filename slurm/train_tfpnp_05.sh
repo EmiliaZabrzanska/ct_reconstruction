@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH -J tfpnp_run04
+#SBATCH -J tfpnp_run05
 #SBATCH -A MPHIL-DIS-SL2-GPU
 #SBATCH -p ampere
 #SBATCH -N 1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=48G
-#SBATCH --time=10:00:00
+#SBATCH --time=30:00:00
 #SBATCH -o logs/tfpnp_%j.out
 #SBATCH -e logs/tfpnp_%j.err
 
@@ -13,7 +13,7 @@ source ~/.bashrc
 conda activate mphil_ct
 cd ~/rds/hpc-work/eaz21
 
-EXPERIMENT_NAME="run_04_sigma_floor"
+EXPERIMENT_NAME="run_05_sigma_floor"
 
 mkdir -p logs
 
@@ -22,15 +22,15 @@ echo "Job ID:     $SLURM_JOB_ID"
 echo "Node:       $(hostname)"
 echo "GPU:        $(nvidia-smi --query-gpu=name --format=csv,noheader)"
 echo "Experiment: $EXPERIMENT_NAME"
-echo "Variant:    σ floor lowered 1.0 → 0.5 (vs run_02 baseline)"
+echo "Variant:    σ floor lowered (1.0 to 0.5)"
 echo "Start:      $(date)"
 echo "================================================="
 
 python scripts/train_tfpnp.py \
     --output_dir "results/learned/$EXPERIMENT_NAME" \
-    --n_train 100 \
-    --n_val 40 \
-    --n_epochs 50 \
+    --n_train 250 \
+    --n_val 50 \
+    --n_epochs 80 \
     --batch_size 8 \
     --n_grad_steps 4 \
     --m 5 \
@@ -47,8 +47,8 @@ python scripts/train_tfpnp.py \
     --sigma_ceil 5.0 \
     --mu_floor 10.0 \
     --mu_ceil 100.0 \
-    --reward_type psnr \      
-    --reward_alpha 0.0 \  
+    --reward_type psnr \
+    --reward_alpha 0.0 \
     --denoiser_path /home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth
 
 TRAIN_EXIT=$?
@@ -57,15 +57,17 @@ if [ $TRAIN_EXIT -ne 0 ]; then
     exit $TRAIN_EXIT
 fi
 
+# ── Post-training: figures + full evaluation ──────────────────────────
 echo ""
 echo "================================================="
-echo "Training complete at $(date). Running post-hoc evaluation..."
+echo "Training complete at $(date)."
+echo "Running post-hoc evaluation on FULL test set..."
 echo "================================================="
 
 python scripts/plot_training_curves.py --experiment_name "$EXPERIMENT_NAME"
 python scripts/plot_checkpoint_comparison.py --experiment_name "$EXPERIMENT_NAME"
 python scripts/plot_policy_behaviour.py --experiment_name "$EXPERIMENT_NAME"
-python scripts/evaluate_run.py --experiment_name "$EXPERIMENT_NAME" --n_test_subset 40
+python scripts/evaluate_run.py --experiment_name "$EXPERIMENT_NAME" --n_test_subset 0
 
 echo ""
 echo "================================================="
