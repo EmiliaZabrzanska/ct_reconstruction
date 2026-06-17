@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J tfpnp_run08
+#SBATCH -J tfpnp_run09
 #SBATCH -A MPHIL-DIS-SL2-GPU
 #SBATCH -p ampere
 #SBATCH -N 1
@@ -13,7 +13,7 @@ source ~/.bashrc
 conda activate mphil_ct
 cd ~/rds/hpc-work/eaz21
 
-EXPERIMENT_NAME="run_08_haarpsi_reward"
+EXPERIMENT_NAME="run_09_ssim_only"
 
 mkdir -p logs
 
@@ -22,10 +22,11 @@ echo "Job ID:     $SLURM_JOB_ID"
 echo "Node:       $(hostname)"
 echo "GPU:        $(nvidia-smi --query-gpu=name --format=csv,noheader)"
 echo "Experiment: $EXPERIMENT_NAME"
-echo "Variant:    reward = ΔPSNR + 5·ΔSSIM − η"
+echo "Variant:    reward = 50·ΔSSIM − η  (PSNR removed entirely)"
 echo "Start:      $(date)"
 echo "================================================="
 
+# ── Train ─────────────────────────────────────────────────────────────
 python scripts/train_tfpnp.py \
     --output_dir "results/learned/$EXPERIMENT_NAME" \
     --n_train 250 \
@@ -47,8 +48,8 @@ python scripts/train_tfpnp.py \
     --sigma_ceil 5.0 \
     --mu_floor 10.0 \
     --mu_ceil 100.0 \
-    --reward_type psnr_haarpsi \
-    --reward_alpha 5.0 \
+    --reward_type ssim \
+    --reward_alpha 50.0 \
     --denoiser_path /home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth
 
 TRAIN_EXIT=$?

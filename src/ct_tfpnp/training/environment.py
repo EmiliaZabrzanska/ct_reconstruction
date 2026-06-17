@@ -17,27 +17,41 @@ def _compute_step_reward(gt, x_curr, prev_metrics, reward_type, alpha, eta):
       'psnr'         — r = ΔPSNR − η  (paper default)
       'psnr_ssim'    — r = ΔPSNR + α·ΔSSIM − η
       'psnr_haarpsi' — r = ΔPSNR + α·ΔHaarPSI − η
+      'ssim'         — r = α·ΔSSIM − η  (pure replacement)
+      'haarpsi'      — r = α·ΔHaarPSI − η  (pure replacement)
     """
     curr_psnr = psnr_np(gt, x_curr)
     new_metrics = {'psnr': curr_psnr}
 
     if reward_type == 'psnr':
         reward = (curr_psnr - prev_metrics['psnr']) - eta
+
     elif reward_type == 'psnr_ssim':
         curr_ssim = ssim_np(gt, x_curr)
         new_metrics['ssim'] = curr_ssim
         reward = ((curr_psnr - prev_metrics['psnr']) +
                   alpha * (curr_ssim - prev_metrics['ssim'])) - eta
+        
     elif reward_type == 'psnr_haarpsi':
         curr_haarpsi = haarpsi_np(gt, x_curr)
         new_metrics['haarpsi'] = curr_haarpsi
         reward = ((curr_psnr - prev_metrics['psnr']) +
                   alpha * (curr_haarpsi - prev_metrics['haarpsi'])) - eta
+        
+    elif reward_type == 'ssim':
+        curr_ssim = ssim_np(gt, x_curr)
+        new_metrics['ssim'] = curr_ssim
+        reward = alpha * (curr_ssim - prev_metrics['ssim']) - eta
+
+    elif reward_type == 'haarpsi':
+        curr_haarpsi = haarpsi_np(gt, x_curr)
+        new_metrics['haarpsi'] = curr_haarpsi
+        reward = alpha * (curr_haarpsi - prev_metrics['haarpsi']) - eta
+
     else:
         raise ValueError(f"Unknown reward_type: {reward_type}")
-
+    
     return reward, new_metrics
-
 
 def collect_episode(policy, admm_step, replay_buffer, gt, op,
                     noise_std=None, noise_levels=(0.05, 0.075, 0.10),
@@ -75,9 +89,9 @@ def collect_episode(policy, admm_step, replay_buffer, gt, op,
 
     # Initialise prev_metrics for whichever reward type is chosen
     prev_metrics = {'psnr': psnr_np(gt, x)}
-    if reward_type == 'psnr_ssim':
+    if reward_type in ('psnr_ssim', 'ssim'):
         prev_metrics['ssim'] = ssim_np(gt, x)
-    elif reward_type == 'psnr_haarpsi':
+    elif reward_type in ('psnr_haarpsi', 'haarpsi'):
         prev_metrics['haarpsi'] = haarpsi_np(gt, x)
 
     episode_rewards = []

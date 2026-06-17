@@ -157,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--mu_ceil", type=float, default=100.0,
                         help="Upper bound for policy's µ output")
     parser.add_argument("--reward_type", type=str, default="psnr",
-                        choices=["psnr", "psnr_ssim", "psnr_haarpsi"],
+                        choices=["psnr", "psnr_ssim", "psnr_haarpsi", "ssim", "haarpsi"],
                         help="Reward function: ΔPSNR alone, +α·ΔSSIM, or +α·ΔHaarPSI")
     parser.add_argument("--reward_alpha", type=float, default=5.0,
                         help="Weight on SSIM/HaarPSI in reward (ignored if reward_type=psnr)")

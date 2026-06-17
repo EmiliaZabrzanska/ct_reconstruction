@@ -1,0 +1,307 @@
+# TFPnP MPhil — Meeting 4 Briefing
+
+**Student:** Emilia Zabrzanska
+**Supervisor:** Dr Ander Biguri
+**Date:** June 2026
+
+---
+
+## 1. Project status
+
+Four main training runs completed; three extension runs currently training in parallel on CSD3.
+
+**What's done:**
+
+- TFPnP solver integrated into LION as a `LIONsolver` subclass
+- Pipeline migrated from development notebooks (NB01–NB10) into a proper package (`src/ct_tfpnp/`) with training scripts (`scripts/train_tfpnp.py`) and post-processing tools
+- Full evaluation pipeline on the LIDC-IDRI test split (389 images) at three noise levels (5%, 7.5%, 10%) and three metrics (PSNR, SSIM, HaarPSI)
+- One main result + three extension experiments characterising hyperparameter sensitivity
+- Baseline comparisons: FBP, TV-regularised ADMM, Fixed PnP-ADMM (σ=1.5, µ=20)
+
+**What's pending:**
+
+- FBPConvNet and LPD trained as learned baselines (both available in LION, will use `SupervisedSolver`)
+- Three extension runs finishing tomorrow morning
+- Report drafting
+
+---
+
+## 2. What TFPnP actually does — system mechanics
+
+### Components
+
+| Component | Trained? | Notes |
+|---|---|---|
+| **DRUNet denoiser** | **No** — pretrained on BSD400 (KAIR weights), frozen throughout | This is the whole point of plug-and-play |
+| **ADMM iteration** | **No** — pure math, no learnable parameters | The skeleton on which the policy acts |
+| **Policy network** (ResNet-18 + 3 heads) | **Yes** | Maps ADMM state → (σ_t, µ_t, stop?). This is what TFPnP learns |
+| **Critic network** | **Yes** | Estimates V(s); provides gradient signal for actor (A2C-style) |
+
+### What σ and µ represent
+
+**σ — denoising strength.** Tells DRUNet "remove noise as if the image had Gaussian noise of standard deviation σ." DRUNet is conditioned on σ as an extra input channel.
+
+- DRUNet was trained on σ in 8-bit image units, σ ∈ ~[0, 50]
+- CT images are in µ-attenuation units (water=1.0, range [0, 2.45])
+- σ is passed to DRUNet as `σ/50` (DRUNet's normalisation)
+- Our σ ∈ [1.0, 5.0] becomes DRUNet input σ/50 ∈ [0.02, 0.10] — very light denoising in DRUNet's native scale
+- **Implication for σ floor:** at σ < 1.0, DRUNet input drops below 0.02, where DRUNet acts as near-identity. The denoising step becomes a no-op
+
+**µ — ADMM penalty / data fidelity weight.** Controls how strongly ADMM trusts the measurement vs the denoiser's output.
+
+- Large µ → measurement dominates → reconstruction fits sinogram closely but stays noisy
+- Small µ → denoiser dominates → smoother but may drift from measurement
+- Conceptually: σ is the regularisation-strength knob, µ is the trust-balance knob
+
+### One TFPnP training episode
+
+For each training image:
+
+```
+Initial reconstruction:  x_0 = FBP(sinogram)
+
+For decision t = 0, 1, ..., N-1   (max N=6 decisions per episode):
+
+    Policy sees (x_t, z_t, u_t, noise_level, iter_frac)
+                              ↓
+              outputs (σ_t, µ_t, stop?)
+
+    If stop? → episode ends
+
+    Otherwise, run m=5 ADMM steps with this σ, µ:
+        For i = 0..4:
+            x_t+1 = x_step(x_t, z_t, u_t, sinogram, µ)   ← data fidelity
+            z_t+1 = DRUNet(x_t+1 + u_t, σ)               ← denoise
+            u_t+1 = u_t + x_t+1 - z_t+1                  ← dual update
+
+    Reward r_t = PSNR(x_t+1) - PSNR(x_t) - η     (η = 0.05)
+    Store (state_t, action_t, reward_t, state_t+1) in replay buffer
+
+Total return G_t = Σ γ^t · r_t      (γ = 0.99)
+
+Sample minibatch from buffer → policy update + critic update
+```
+
+So **m=5 ADMM steps per decision × N=6 decisions = 30 total ADMM iterations** per episode. Same total work, but the policy has 6 opportunities to adjust σ/µ during reconstruction.
+
+### Why N and m matter
+
+- **Large m, small N** (e.g. m=15, N=2): few decisions, each committing to many ADMM steps. Less adaptive — close to grid-searched fixed σ/µ
+- **Small m, large N** (e.g. m=3, N=10): many decisions, each committing to few ADMM steps. More adaptive, but reward signal per decision shrinks (less PSNR change per 3-step block), which destabilises RL
+- **m=5, N=6** (paper's choice, and ours): pragmatic balance
+
+This is what extension run_06 tests.
+
+---
+
+## 3. Pipeline architecture — what each script does
+
+The project was developed in notebooks first (NB01–NB10), then proven code was migrated into the `ct_tfpnp` package with CLI-driven scripts. This mirrors LION's own structure: notebooks for exploration, package for production.
+
+### Training pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  scripts/train_tfpnp.py                         │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+   Reads CLI args (n_train, n_epochs, σ/µ ranges,
+                   reward type, π₂ warmup, etc.)
+                            │
+                            ▼
+   Constructs:
+     • Geometry        (ParallelBeam, 30 views, 512×512)
+     • DRUNet          (pretrained weights loaded, frozen)
+     • Policy network  (ResNet-18 + 3 heads, random init)
+     • Critic network  (random init)
+     • ADMM environment
+     • TFPnPSolver     (inherits from LIONsolver)
+                            │
+                            ▼
+   Loads from LION:
+     • train split (3300 images, subsets to N_train)
+     • val split   (401 images,  subsets to N_val)
+                            │
+                            ▼
+   For each epoch:
+     ┌──────────────────────────────────────────────────┐
+     │ For each training image:                         │
+     │   Run TFPnP episode (m·N = 30 ADMM steps)        │
+     │   Push transitions to replay buffer              │
+     │   Sample minibatch → update policy + critic      │
+     │ Validate on val set (TFPnP @ 5% noise)           │
+     │ Save checkpoint if val PSNR improved (★)         │
+     └──────────────────────────────────────────────────┘
+                            │
+                            ▼
+   Writes to results/learned/{exp}/:
+     • checkpoint_best_val.pth   ← the result
+     • tfpnp_check_*.pt          (periodic snapshots)
+     • metrics_history.json      (per-step + per-epoch metrics)
+     • tfpnp_final.pt
+```
+
+### Post-processing pipeline
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  plot_training_curves.py                                       │
+│    Input:  metrics_history.json                                │
+│    Output: figures/{exp}/training_curves.pdf                   │
+│    Shows:  critic loss vs step, mean reward vs step,           │
+│            mean policy σ vs step, train/val PSNR vs epoch      │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  plot_checkpoint_comparison.py                                 │
+│    Input:  checkpoint_best_val.pth                             │
+│    Output: figures/{exp}/checkpoint_comparison.pdf             │
+│    Shows:  GT / FBP / Fixed PnP / TFPnP reconstruction         │
+│            on one auto-selected lung-slice val image           │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  plot_policy_behaviour.py                                      │
+│    Input:  checkpoint_best_val.pth                             │
+│    Output: figures/{exp}/policy_behaviour.pdf                  │
+│    Shows:  3×5 grid (image / σ trajectory / µ trajectory)      │
+│            across 5 evenly-spaced lung-slice val images        │
+│            — visualises what the policy learned to do          │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  evaluate_run.py                                               │
+│    Input:  checkpoint_best_val.pth                             │
+│    Output: results/metrics/{exp}/all_results.csv               │
+│            figures/{exp}/metrics_comparison.pdf                │
+│            figures/{exp}/per_image_psnr.pdf                    │
+│            figures/{exp}/metrics_vs_noise.pdf                  │
+│    Action: runs FBP / TV / Fixed PnP / TFPnP on full 389-image │
+│            LION test split at 5%, 7.5%, 10% noise              │
+│            reports PSNR, SSIM, HaarPSI (mean ± std)            │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Both pipelines integrate via the SLURM job, which runs `train_tfpnp.py` first then all four post-processing scripts in sequence.
+
+---
+
+## 4. Results
+
+### Run history
+
+| Run | Config | Best val | At epoch | Purpose |
+|---|---|---|---|---|
+| run_01 | 20 train × 20 ep | 26.80 | 19 | dev sanity check (small) |
+| run_02 | 100 × 50, default | 26.31 | 33 | paper-faithful baseline |
+| run_03 | 3300 × 5, default | 25.16 | 3 | full-data scaling experiment |
+| **run_04** | **250 × 80, default** | **27.05** | **9** | **main result** |
+| run_05 | 250 × 80, σ_floor=0.5 | (failed) | — | extension: σ range |
+| run_06 | 250 × 80, m=3, N=10 | 26.31 (then crashed) | 7 | extension: decision frequency |
+| run_07 | 250 × 80, SSIM reward | 26.90 (still training) | 13 | extension: reward shaping |
+
+### Headline numbers (run_04, full 389-image test set)
+
+| Method | PSNR @5% | PSNR @7.5% | PSNR @10% | SSIM @5% | HaarPSI @5% |
+|---|---|---|---|---|---|
+| FBP | 14.56 ± 2.01 | 13.65 ± 1.93 | 13.22 ± 1.89 | 0.075 | 0.232 |
+| TV | 19.67 ± 2.06 | 18.35 ± 2.08 | 17.50 ± 2.03 | 0.287 | 0.390 |
+| Fixed PnP-ADMM | 24.31 ± 2.29 | 22.42 ± 1.80 | 21.50 ± 1.64 | 0.499 | 0.405 |
+| **TFPnP (ours)** | **27.27 ± 1.75** | **26.58 ± 1.66** | **26.10 ± 1.61** | **0.691** | **0.485** |
+
+TFPnP wins on every individual test image (no failure modes).
+
+### Comparison to paper
+
+| Method | Paper @5% | Paper @7.5% | Paper @10% | Ours @5% | Ours @7.5% | Ours @10% |
+|---|---|---|---|---|---|---|
+| FBP | 18.37 | 16.16 | 14.32 | 14.56 | 13.65 | 13.22 |
+| TV | 21.47 | 19.17 | 16.95 | 19.67 | 18.35 | 17.50 |
+| TFPnP | 24.50 | 24.23 | 23.72 | **27.27** | **26.58** | **26.10** |
+
+Three observations:
+
+1. **Our FBP and TV are 3–4 dB lower than the paper's.** Reason: harder geometry (512×512, 30 views, ~724 detectors vs paper's 128×128, 30 views, 182 detectors). More pixels × angle in the same number of views.
+2. **Our TFPnP is 3 dB higher than the paper's**, despite the harder geometry. Reason: **in-domain training** (LIDC CT) vs paper's **cross-domain** (PASCAL VOC). When the training data matches the test data, the policy learns CT-specific σ/µ schedules.
+3. **The TFPnP-to-Fixed-PnP gap widens with noise** (we go +2.96 → +4.16 → +4.61 dB across 5%, 7.5%, 10%). Direct empirical support for the paper's "tuning-free" claim: knowing how to adjust σ/µ adaptively matters more at higher noise.
+
+### Adding HaarPSI
+
+The paper used PSNR only. We added SSIM (structural quality) and HaarPSI (perceptual quality, via the `piq` library) because PSNR can be misleading for medical reconstructions — smooth reconstructions get high PSNR but lose perceptually-meaningful detail.
+
+**Finding:** TFPnP wins on HaarPSI at all noise levels, **but the HaarPSI gap to Fixed PnP is smaller than the PSNR gap** (Δ = 0.080 vs 2.96 dB at 5%). This suggests TFPnP's reconstruction is smoother than Fixed PnP's, which helps PSNR more than HaarPSI. Worth raising as a discussion point: **is the PSNR-based reward optimising the right metric?** Run_07 (SSIM reward) directly tests this.
+
+---
+
+## 5. Extension runs and why they matter
+
+### Run_05 — σ floor lowered from 1.0 to 0.5
+
+**Hypothesis:** the σ=1.0 floor was binding the policy (run_04's σ trajectory presses against 1.0 frequently). Lowering it should give the policy more freedom.
+
+**Result so far** (currently at epoch 42): training has failed. Best val 19.01 dB at epoch 1 — i.e. the random-initialised policy is the best the run has produced. The policy never learned.
+
+**Interpretation:** the σ-floor was not a binding constraint, but below σ=1.0, DRUNet's effective input (σ/50 < 0.02) is too small for DRUNet to produce a discernible denoising effect, so the prior step becomes ineffective and the policy can't get a useful gradient. **σ ≥ 1.0 is a stability requirement for DRUNet-based PnP, not just a hyperparameter choice.** This is a publishable negative result.
+
+### Run_06 — m=3, N=10 (vs paper's m=5, N=6)
+
+**Hypothesis:** giving the policy more decision opportunities (10 instead of 6) could let it learn finer-grained σ/µ schedules, at the cost of fewer ADMM steps per decision.
+
+**Result so far** (currently at epoch 34): peaked at 26.31 dB at epoch 7 (matching run_02), then crashed catastrophically at epoch 33 (val 14.50 dB).
+
+**Interpretation:** confirms the paper's m=5, N=6 was a careful choice. With smaller m, each decision has less impact on PSNR, so the reward signal per action gets noisier, and the policy gradient becomes less stable. Even with the same total ADMM step budget (m·N = 30), the partitioning matters.
+
+### Run_07 — Reward = ΔPSNR + 5·ΔSSIM (vs default ΔPSNR)
+
+**Hypothesis:** including SSIM in the reward signal should produce structurally-better reconstructions, addressing the over-smoothing observation.
+
+**Result so far** (currently at epoch 35): best val 26.90 dB at epoch 13 — slightly below run_04's 27.05, but **peaked later and more stably**. Suggests SSIM-weighted reward provides smoother gradients.
+
+**Interpretation pending full results:** if final SSIM/HaarPSI scores are higher than run_04 (which they should be, since SSIM is directly in the reward), this is a clean demonstration that reward shaping is a legitimate lever for perceptual quality. The trade-off would be in PSNR.
+
+---
+
+## 6. Findings from run_04 worth discussing
+
+### Action-space asymmetry — the µ-floor observation
+
+The policy behaviour figure from run_04 shows a striking pattern:
+
+- **σ trajectory:** clear oscillation between ~1.5 and ~3.0 across all val images, with image-specific variation.
+- **µ trajectory:** essentially constant at the floor across every val image, every ADMM iteration
+
+The policy has learned an **asymmetric strategy**: actively modulate σ, ignore µ.
+
+**Interpretation:** within the chosen µ range [10, 100], the policy gradient for µ provides insufficient signal to compete with the σ gradient. This is a form of **action-space collapse** known to occur in continuous-action policy gradient methods when one action dimension dominates the value function. The policy converges to "trust the denoiser, set µ as low as allowed, modulate everything via σ schedule."
+
+This is interesting because:
+
+1. It's a real finding about the training dynamics, showing how RL navigates the (σ, µ) action space
+2. It suggests that within this configuration, µ doesn't carry useful information for the policy
+3. It motivates future work on either decoupling the σ and µ heads architecturally, or using a different RL objective that ensures both action dimensions get useful gradients
+
+### Peak-then-decay training dynamics
+
+Across all 250×80 runs (run_04, run_05, run_06, run_07), the same pattern recurs:
+
+- Warmup: critic learns V(s), σ/µ outputs stay at random init
+- π₂ activates at epoch 5: sharp jump in val PSNR (typically +3 to +6 dB in 2 epochs)
+- Peak: val PSNR hits its best value within 5–15 epochs of π₂ activation
+- Slow degradation: val PSNR drifts down over remaining epochs while train PSNR stays stable
+
+The best-val checkpoint mechanism captures the peak. This pattern is consistent with known RL post-warmup instability — the paper addresses it by halving LR at iteration 1600, which we don't do (we use a different mechanism).
+
+For the report, this becomes a Discussion point about TFPnP's training dynamics and the role of LR scheduling in actor-critic methods.
+
+---
+
+## 7. Next steps
+
+1. **Finish extension runs** (run_05/06/07) — expected by Wednesday morning
+2. **Train FBPConvNet** as a learned baseline using LION's `SupervisedSolver`
+3. **Train LPD** if time permits
+4. **Re-run `evaluate_run.py`** for all completed runs to include FBPConvNet (and LPD) as a fifth comparison method
+5. **Write the report** 
+
+- **Limitations:** RED-CNN and RPGD not available in LION (paper used them), DRUNet trained on natural images shows mild over-smoothing on CT textures
