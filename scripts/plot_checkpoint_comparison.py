@@ -20,14 +20,10 @@ import matplotlib.pyplot as plt
 
 import ct_tfpnp
 from ct_tfpnp.models.policy import ResNetActor_ADMM
-from ct_tfpnp.models.denoiser import DRUNetDenoiser
-from ct_tfpnp.ct_ops.admm import ADMMStep
 from ct_tfpnp.ct_ops.fbp import fbp as lion_fbp
 from ct_tfpnp.evaluation.metrics import psnr_np as psnr, ls_scale
 from ct_tfpnp.datasets.lidc import get_lion_split, is_lung_slice
-from ct_tfpnp.experiments.parallel_beam_ct import experiment
-from ct_tfpnp.utils import to_4d, read_metrics_config
-from LION.CTtools.ct_utils import make_operator
+from ct_tfpnp.utils import to_4d, read_metrics_config, setup_admm
 
 
 # ── Output paths ───────────────────────────────────────────────────────
@@ -57,13 +53,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Setup ──────────────────────────────────────────────────────────
-    geo = experiment.experiment_params.geometry
-    op = make_operator(geo)
-    denoiser = DRUNetDenoiser(pretrained_path=args.denoiser_path).to(device)
-    for p_ in denoiser.parameters():
-        p_.requires_grad_(False)
-    denoiser.eval()
-    admm_step = ADMMStep(op=op, denoiser=denoiser, n_x_steps=6)
+    geo, op, denoiser, admm_step = setup_admm(args.denoiser_path, device)
 
     # ── Load checkpoint ────────────────────────────────────────────────
     ckpt_dir = CHECKPOINT_BASE / args.experiment_name
@@ -92,7 +82,7 @@ def main():
         model_params.sigma_min, model_params.sigma_max = sigma_range
         model_params.mu_min, model_params.mu_max = mu_range
         model = TFPnPModel(model_parameters=model_params,
-                           geometry=experiment.experiment_params.geometry)
+                           geometry=geo)
         model.load_state_dict(ckpt['model_state_dict'])
         policy_best = model.policy.to(device).eval()        # ← assign, not return
     elif 'policy_state_dict' in ckpt:

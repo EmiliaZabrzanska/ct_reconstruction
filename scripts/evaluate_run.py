@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import json
 from pathlib import Path
 
 import torch
@@ -18,15 +19,11 @@ import matplotlib.pyplot as plt
 
 import ct_tfpnp
 from ct_tfpnp.models.policy import ResNetActor_ADMM
-from ct_tfpnp.models.denoiser import DRUNetDenoiser
-from ct_tfpnp.ct_ops.admm import ADMMStep
 from ct_tfpnp.ct_ops.fbp import fbp as lion_fbp
 from ct_tfpnp.ct_ops.tv import tv_reconstruction
 from ct_tfpnp.evaluation.metrics import evaluate_reconstruction, psnr_np as psnr, ls_scale
 from ct_tfpnp.datasets.lidc import get_lion_split
-from ct_tfpnp.experiments.parallel_beam_ct import experiment
-from ct_tfpnp.utils import to_4d, read_metrics_config
-from LION.CTtools.ct_utils import make_operator
+from ct_tfpnp.utils import to_4d, read_metrics_config, setup_admm
 
 # ── Output paths (edit these once if your layout ever changes) ─────────
 OUTPUT_BASE  = Path("/home/eaz21/rds/hpc-work/eaz21/figures")
@@ -82,7 +79,7 @@ def load_checkpoint(ckpt_dir, device):
         return model.policy.to(device).eval()
     elif 'policy_state_dict' in ckpt:
         policy = ResNetActor_ADMM(in_channels=5, n_action_steps=5,
-                                  sigma_range=sigma_range,    # ← use detected range
+                                  sigma_range=sigma_range,
                                   mu_range=mu_range).to(device)
         policy.load_state_dict(ckpt['policy_state_dict'])
         return policy.eval()
@@ -160,6 +157,54 @@ def save_csv(all_results, noise_levels, path):
     print(f"Saved {path}")
 
 
+def save_per_image_metrics(all_results, test_labels, test_indices, noise_levels, path):
+    """Dump full per-image metrics for all methods/noise levels to JSON.
+
+    Enables downstream analysis (reconstruction galleries, ranking, custom plots)
+    without re-running the eval loop.
+
+    Structure:
+        {
+          'test_labels': [...],
+          'test_indices': [...],
+          'noise_levels': [0.05, 0.075, 0.10],
+          'methods': ['FBP', 'TV', 'Fixed PnP-ADMM', 'TFPnP'],
+          'metrics': {
+            '5.0%': {'FBP': {'psnr': [...], 'ssim': [...], 'haarpsi': [...]}, ...},
+            '7.5%': {...},
+            '10.0%': {...},
+          }
+        }
+    """
+    if hasattr(test_indices, 'tolist'):
+        idx_list = test_indices.tolist()
+    else:
+        idx_list = list(test_indices)
+
+    out = {
+        'test_labels': list(test_labels),
+        'test_indices': idx_list,
+        'noise_levels': list(noise_levels),
+        'methods': METHODS,
+        'metrics': {}
+    }
+    for nl in noise_levels:
+        nl_key = f'{nl*100:.1f}%'
+        out['metrics'][nl_key] = {}
+        for method in METHODS:
+            method_metrics = {}
+            for metric in METRIC_NAMES:
+                if metric in all_results[nl][method][0]:
+                    method_metrics[metric] = [
+                        float(r[metric]) for r in all_results[nl][method]
+                    ]
+            out['metrics'][nl_key][method] = method_metrics
+
+    with open(path, 'w') as f:
+        json.dump(out, f, indent=2)
+    print(f"Saved {path}")
+
+
 def plot_metrics_bars(all_results, n_test, noise_level, path):
     fig, axes = plt.subplots(1, 3, figsize=(16, 6))
     results = all_results[noise_level]
@@ -174,7 +219,7 @@ def plot_metrics_bars(all_results, n_test, noise_level, path):
         ax.set_xticks(range(len(METHODS)))
         ax.set_xticklabels(METHOD_LABELS, fontsize=8)
         ax.set_ylabel(ylabel, fontsize=10)
-        ax.grid(axis='y', alpha=0.2)
+        ax.grid(axis='y', alpha=0.2, linewidth=0.5)
         ax.set_axisbelow(True)
         fmt = '.2f' if metric == 'psnr' else '.3f'
         for i, m in enumerate(means):
@@ -183,28 +228,47 @@ def plot_metrics_bars(all_results, n_test, noise_level, path):
                     fontsize=10, fontweight='bold')
         ax.set_ylim(bottom=0, top=ax.get_ylim()[1] * 1.08)
     plt.suptitle(f'Reconstruction Quality at {noise_level*100:.1f}% Noise '
-                 f'— {n_test} Test Images', fontsize=12, fontweight='bold')
+                 f'— {n_test} Test Images',
+                 fontsize=12, fontweight='bold', y=0.95)
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved {path}")
 
 
-def plot_per_image_psnr(all_results, test_labels, noise_level, path):
-    """Per-image PSNR bars. Subsamples evenly if test set > 30 images."""
+def plot_per_image_psnr(all_results, test_labels, noise_level, path, n_select=5):
+    """Per-image PSNR for cases with smallest and largest TFPnP–Fixed PnP gap.
+
+    Selects n_select images where TFPnP barely improves over Fixed PnP-ADMM
+    (smallest gap — the floor of TFPnP's contribution) and n_select where TFPnP
+    wins by the largest margin (largest gap — the ceiling). Group labels sit
+    above the plot area via a blended transform, so they never overlap with
+    bars regardless of bar heights.
+    """
+    from matplotlib.transforms import blended_transform_factory
+
     results = all_results[noise_level]
     n_test = len(test_labels)
 
-    # Subsample if too many images to display cleanly
-    if n_test > 30:
-        n_show = max(30, int(np.ceil(0.1 * n_test)))
-        show_indices = np.linspace(0, n_test - 1, n_show, dtype=int)
-    else:
-        show_indices = np.arange(n_test)
+    tfpnp_psnrs = np.array([r['psnr'] for r in results['TFPnP']])
+    fixed_psnrs = np.array([r['psnr'] for r in results['Fixed PnP-ADMM']])
+    gaps = tfpnp_psnrs - fixed_psnrs
 
-    fig, ax = plt.subplots(figsize=(16, 5))
+    if n_test <= 2 * n_select:
+        show_indices = np.argsort(gaps)
+        smallest_count = n_test
+        largest_count = 0
+    else:
+        sorted_indices = np.argsort(gaps)
+        smallest = sorted_indices[:n_select]
+        largest = sorted_indices[-n_select:]
+        show_indices = np.concatenate([smallest, largest])
+        smallest_count = n_select
+        largest_count = n_select
+
+    fig, ax = plt.subplots(figsize=(14, 6))
     x_pos = np.arange(len(show_indices))
-    width = 0.15
+    width = 0.18
     offset = (len(METHODS) - 1) * width / 2
 
     for i, (method, color) in enumerate(zip(METHODS, COLORS)):
@@ -213,21 +277,43 @@ def plot_per_image_psnr(all_results, test_labels, noise_level, path):
                label=method, color=color, alpha=0.9,
                edgecolor='white', linewidth=0.5)
 
-    labels_subset = [test_labels[idx].replace('test_', '#') for idx in show_indices]
+    gap_vals = [results['TFPnP'][idx]['psnr'] -
+                results['Fixed PnP-ADMM'][idx]['psnr']
+                for idx in show_indices]
+    labels_subset = [
+        f"{test_labels[idx].replace('test_', '#')}\nΔ={gap:+.2f}"
+        for idx, gap in zip(show_indices, gap_vals)
+    ]
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(labels_subset, rotation=30, ha='right', fontsize=9)
+    ax.set_xticklabels(labels_subset, fontsize=8)
 
-    if n_test > 30:
-        title = (f'Per-Image PSNR at {noise_level*100:.1f}% Noise '
-                 f'({len(show_indices)} of {n_test} images, evenly spaced)')
+    if smallest_count > 0 and largest_count > 0:
+        divider_x = smallest_count - 0.5
+        ax.axvline(divider_x, color='gray', linestyle=':',
+                   linewidth=1, alpha=0.6)
+
+        # Group labels above the plot area, never overlap bars
+        trans = blended_transform_factory(ax.transData, ax.transAxes)
+        ax.text(smallest_count / 2 - 0.5, 1.02,
+                'Smallest TFPnP–Fixed gap',
+                transform=trans, ha='center', va='bottom',
+                fontsize=9, color='#555', style='italic')
+        ax.text(smallest_count + largest_count / 2 - 0.5, 1.02,
+                'Largest TFPnP–Fixed gap',
+                transform=trans, ha='center', va='bottom',
+                fontsize=9, color='#555', style='italic')
+
+        title = (f'Per-Image PSNR at {noise_level*100:.1f}% Noise — '
+                 f'{smallest_count} smallest and {largest_count} largest '
+                 f'TFPnP–Fixed PnP gaps')
     else:
         title = f'Per-Image PSNR at {noise_level*100:.1f}% Noise'
 
     ax.set_ylabel('PSNR (dB)', fontsize=10)
-    ax.set_title(title, fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=11, fontweight='bold', pad=30)
     ax.legend(fontsize=8, ncol=len(METHODS), loc='upper center',
-              bbox_to_anchor=(0.5, -0.15), frameon=False)
-    ax.grid(axis='y', alpha=0.2)
+              bbox_to_anchor=(0.5, -0.18), frameon=False)
+    ax.grid(axis='y', alpha=0.2, linewidth=0.5)
     ax.set_axisbelow(True)
     ax.set_ylim(bottom=0)
     plt.tight_layout()
@@ -237,7 +323,7 @@ def plot_per_image_psnr(all_results, test_labels, noise_level, path):
 
 
 def plot_metrics_vs_noise(all_results, noise_levels, path):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
     noise_pcts = np.array([nl * 100 for nl in noise_levels])
     for ax, metric, ylabel in zip(axes, METRIC_NAMES, METRIC_LABELS):
         if metric not in all_results[noise_levels[0]][METHODS[0]][0]:
@@ -252,13 +338,13 @@ def plot_metrics_vs_noise(all_results, noise_levels, path):
         ax.set_xlabel('Noise level (%)', fontsize=10)
         ax.set_ylabel(ylabel, fontsize=10)
         ax.set_xticks(noise_pcts)
-        ax.grid(True, alpha=0.2)
+        ax.grid(True, alpha=0.2, linewidth=0.5)
         ax.set_axisbelow(True)
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', ncol=len(METHODS),
                bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=9)
     plt.suptitle('Reconstruction Quality vs Noise Level',
-                 fontsize=12, fontweight='bold')
+                 fontsize=12, fontweight='bold', y=0.95)
     plt.tight_layout(rect=[0, 0.05, 1, 0.93])
     plt.savefig(path, bbox_inches='tight')
     plt.close()
@@ -286,13 +372,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    geo = experiment.experiment_params.geometry
-    op = make_operator(geo)
-    denoiser = DRUNetDenoiser(pretrained_path=args.denoiser_path).to(device)
-    for p_ in denoiser.parameters():
-        p_.requires_grad_(False)
-    denoiser.eval()
-    admm_step = ADMMStep(op=op, denoiser=denoiser, n_x_steps=6)
+    geo, op, denoiser, admm_step = setup_admm(args.denoiser_path, device)
 
     test_images, test_indices = get_lion_split(
         split="test", geometry=geo, device=device)
@@ -312,6 +392,9 @@ def main():
                                   op, admm_step, policy, device)
 
     save_csv(all_results, args.noise_levels, results_dir / "all_results.csv")
+    save_per_image_metrics(all_results, test_labels, test_indices,
+                            args.noise_levels,
+                            results_dir / "per_image_metrics.json")
     plot_metrics_bars(all_results, len(test_images), 0.05,
                       output_dir / "metrics_comparison.pdf")
     plot_per_image_psnr(all_results, test_labels, 0.05,
