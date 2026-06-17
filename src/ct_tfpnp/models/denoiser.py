@@ -136,5 +136,3 @@ class DRUNetDenoiser(nn.Module):
             out = out.squeeze(0)
         return out
 
-
-# Backward compatibility

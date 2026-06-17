@@ -14,6 +14,7 @@ conda activate mphil_ct
 cd ~/rds/hpc-work/eaz21
 
 EXPERIMENT_NAME="run_02_pat_100"
+FBPCONVNET_CKPT="/home/eaz21/rds/hpc-work/eaz21/results/learned/fbpconvnet_pat_250_e80/checkpoint_best_val.pth"
 
 mkdir -p logs
 
@@ -47,8 +48,8 @@ python scripts/train_tfpnp.py \
     --sigma_ceil 5.0 \
     --mu_floor 10.0 \
     --mu_ceil 100.0 \
-    --reward_type psnr \           
-    --reward_alpha 0.0 \  
+    --reward_type psnr \
+    --reward_alpha 0.0 \
     --denoiser_path /home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth
 
 TRAIN_EXIT=$?
@@ -68,6 +69,7 @@ python scripts/plot_training_curves.py --experiment_name "$EXPERIMENT_NAME"
 python scripts/plot_checkpoint_comparison.py --experiment_name "$EXPERIMENT_NAME"
 python scripts/plot_policy_behaviour.py --experiment_name "$EXPERIMENT_NAME"
 python scripts/evaluate_run.py --experiment_name "$EXPERIMENT_NAME" --n_test_subset 40
+python scripts/plot_reconstruction_gallery.py --experiment_name "$EXPERIMENT_NAME" --fbpconvnet_ckpt "$FBPCONVNET_CKPT"
 
 echo ""
 echo "================================================="
