@@ -212,7 +212,7 @@ def main():
         (x_drunet[0].cpu().numpy(),
          f"DRUNet-alone (σ={DRUNET_ALONE_SIGMA})\nPSNR={drunet_psnr:.1f} dB"),
         (x_fix[0].cpu().numpy(),
-         f"Fixed PnP-ADMM\n(σ={FIXED_SIGMA}, μ={FIXED_MU})\nPSNR={fix_psnr:.1f} dB"),
+         f"Fixed PnP-ADMM (σ={FIXED_SIGMA}, μ={FIXED_MU})\nPSNR={fix_psnr:.1f} dB"),
         (x_tfpnp[0].cpu().numpy(),
          f"TFPnP (epoch {ckpt.get('epoch', '?')})\n"
          f"{n_steps_run} steps\nPSNR={tfpnp_psnr:.1f} dB"),
