@@ -8,7 +8,8 @@ data/*
 # ==============================
 # RESULTS & CHECKPOINTS
 # ==============================
-results/*
+results/baselines/
+results/learned/
 !results/.gitkeep
 
 *.pt

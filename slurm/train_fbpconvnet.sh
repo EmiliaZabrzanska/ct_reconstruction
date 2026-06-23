@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J fbpconvnet_250_e80
-#SBATCH -A FERGUSSON-SL3-GPU
+#SBATCH -A MPHIL-DIS-SL2-GPU
 #SBATCH -p ampere
 #SBATCH -N 1
 #SBATCH --gres=gpu:1
