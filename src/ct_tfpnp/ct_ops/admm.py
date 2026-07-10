@@ -67,6 +67,7 @@ class ADMMStep(nn.Module):
             x_new: shape (B, 1, H, W)
         """
         v = z - u
+        
         return self.denoiser(v, sigma)
 
     def z_step(

@@ -4,6 +4,7 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -62,9 +63,15 @@ def main(args):
             with torch.no_grad():
                 fbp_b_list = []
                 for g in gt_batch:
+                    # Sample noise level per image (or use fixed if noise_std > 0)
+                    if args.noise_std == 0:
+                        noise_std_sampled = float(np.random.choice([0.05, 0.075, 0.10]))
+                    else:
+                        noise_std_sampled = args.noise_std
+
                     sino_b = op.forward(g)
                     scale_b = sino_b.max() / g.max()
-                    noise_b = args.noise_std * (sino_b / scale_b).std() * torch.randn_like(sino_b)
+                    noise_b = noise_std_sampled * (sino_b / scale_b).std() * torch.randn_like(sino_b)
                     y_b = (sino_b / scale_b + noise_b) * scale_b
                     fbp_b_list.append(lion_fbp(y_b, op))
                 fbp_b = torch.stack(fbp_b_list)
@@ -79,22 +86,31 @@ def main(args):
         avg_loss = epoch_loss / len(train_loader)
         train_losses.append(avg_loss)
 
-        # Validation
+        # Validation — evaluate at each noise level separately
+        val_noise_levels = [0.05, 0.075, 0.10] if args.noise_std == 0 else [args.noise_std]
         model.eval()
-        val_psnr_sum = 0.0
+        val_psnrs_by_level = {}
         with torch.no_grad():
-            for v_gt in val_images:
-                v_gt = v_gt.to(device)
-                sino_v = op.forward(v_gt)
-                scale_v = sino_v.max() / v_gt.max()
-                torch.manual_seed(42)
-                noise_v = args.noise_std * (sino_v / scale_v).std() * torch.randn_like(sino_v)
-                y_v = (sino_v / scale_v + noise_v) * scale_v
-                fbp_v = lion_fbp(y_v, op)
-                out_v = model(to_4d(fbp_v))
-                val_psnr_sum += psnr(v_gt, ls_scale(v_gt, out_v[0]).clamp(min=0))
-        avg_val = val_psnr_sum / len(val_images)
+            for noise_level in val_noise_levels:
+                level_psnr_sum = 0.0
+                for v_idx, v_gt in enumerate(val_images):
+                    v_gt = v_gt.to(device)
+                    sino_v = op.forward(v_gt)
+                    scale_v = sino_v.max() / v_gt.max()
+                    torch.manual_seed(42 + v_idx * 100)  # per-image seed
+                    noise_v = noise_level * (sino_v / scale_v).std() * torch.randn_like(sino_v)
+                    y_v = (sino_v / scale_v + noise_v) * scale_v
+                    fbp_v = lion_fbp(y_v, op)
+                    out_v = model(to_4d(fbp_v))
+                    level_psnr_sum += psnr(v_gt, ls_scale(v_gt, out_v[0]).clamp(min=0))
+                val_psnrs_by_level[noise_level] = level_psnr_sum / len(val_images)
+
+        # Aggregate: average across noise levels for checkpointing
+        avg_val = sum(val_psnrs_by_level.values()) / len(val_psnrs_by_level)
         val_psnrs.append(avg_val)
+
+        # Print each level too for diagnostic visibility
+        level_str = " | ".join(f"{nl*100:.1f}%: {p:.2f}" for nl, p in val_psnrs_by_level.items())
 
         if avg_val > best_val:
             best_val = avg_val
@@ -104,7 +120,7 @@ def main(args):
                        save_dir / "checkpoint_best_val.pth")
 
         print(f"Epoch {epoch:>3}/{args.n_epochs}: loss={avg_loss:.6f} | "
-              f"val PSNR={avg_val:.2f} dB"
+              f"val PSNR avg={avg_val:.2f} dB ({level_str})"
               + ("  (new best)" if avg_val == best_val else ""))
 
     # Save training history for plot_training_curves.py compatibility
@@ -136,6 +152,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_epochs", type=int, default=80)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--noise_std", type=float, default=0.05)
+    parser.add_argument("--noise_std", type=float, default=0.0,
+                    help="Noise level. 0 = mixed sampling from {5%, 7.5%, 10%}")
     args = parser.parse_args()
     main(args)

@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-Full evaluation script — produces all NB10 figures for a given experiment.
-
-Usage:
-    python -u scripts/evaluate_run.py --experiment_name run_04_pat_250_e80
-    python -u scripts/evaluate_run.py --experiment_name run_04_pat_250_e80 \
-        --fbpconvnet_ckpt results/learned/fbpconvnet_pat_250_e80/checkpoint_best_val.pth
+Full evaluation script (reproduction of NB10 figs)
 """
 
 import argparse
@@ -25,50 +20,67 @@ from ct_tfpnp.ct_ops.tv import tv_reconstruction
 from ct_tfpnp.evaluation.metrics import evaluate_reconstruction, psnr_np as psnr, ls_scale
 from ct_tfpnp.datasets.lidc import get_lion_split
 from ct_tfpnp.utils import to_4d, read_metrics_config, setup_admm
+from ct_tfpnp.models.tfpnp_model import TFPnPModel
 from ct_tfpnp.models.fbpconvnet_image import FBPConvNetImage
 from ct_tfpnp.experiments.parallel_beam_ct import experiment
 from LION.models.post_processing.FBPConvNet import FBPConvNet as _FBPConvNetParent
 
-# ── Output paths (edit these once if your layout ever changes) ─────────
-OUTPUT_BASE  = Path("/home/eaz21/rds/hpc-work/eaz21/figures")
-RESULTS_BASE = Path("/home/eaz21/rds/hpc-work/eaz21/results/metrics")
+# output paths
+OUTPUT_BASE     = Path("/home/eaz21/rds/hpc-work/eaz21/figures")
+RESULTS_BASE    = Path("/home/eaz21/rds/hpc-work/eaz21/results/metrics")
 CHECKPOINT_BASE = Path("/home/eaz21/rds/hpc-work/eaz21/results/learned")
 
-# ── Constants ──────────────────────────────────────────────────────────
-METHODS       = ['FBP', 'TV', 'DRUNet', 'FBPConvNet', 'Fixed PnP-ADMM', 'TFPnP']
-METHOD_LABELS = ['FBP', 'TV', 'DRUNet\n(σ=10)', 'FBP-\nConvNet', 'Fixed\nPnP-ADMM', 'TFPnP\n(Ours)']
-COLORS        = ['#bdc3c7', '#f39c12', '#9b59b6', '#1abc9c', '#3498db', '#e74c3c']
-METRIC_NAMES = ['psnr', 'ssim', 'haarpsi']
-METRIC_LABELS = ['PSNR (dB)', 'SSIM', 'HaarPSI']
-FIXED_SIGMA = 1.5
-FIXED_MU = 20.0
+# constants
+METHODS            = ['FBP', 'TV', 'DRUNet', 'FBPConvNet', 'Fixed PnP-ADMM', 'TFPnP']
+METHOD_LABELS      = ['FBP', 'TV', 'DRUNet\n(σ=10)', 'FBP-\nConvNet', 'Fixed\nPnP-ADMM', 'TFPnP\n(Ours)']
+COLORS             = ['#bdc3c7', '#f39c12', '#9b59b6', '#1abc9c', '#3498db', '#e74c3c']
+METRIC_NAMES       = ['psnr', 'ssim', 'haarpsi']
+METRIC_LABELS      = ['PSNR (dB)', 'SSIM', 'HaarPSI']
+FIXED_SIGMA        = 1.5
+FIXED_MU           = 20.0
 DRUNET_ALONE_SIGMA = 10.0
 
-
+# compute metrics for gt recon pair
 def compute_metrics(gt, recon):
+
+    # convert gt to 4D tensor 
     gt_4d = to_4d(gt)
+    
+    # convert recon to 4D tensor and clamp 
     recon_4d = to_4d(recon).clamp(0, float(gt.max()))
+    
+    # evaluate metrics
     return evaluate_reconstruction(recon_4d, gt_4d, float(gt.max()))
 
 
 def load_checkpoint(ckpt_dir, device):
+
+    # set checkpoint paths
     ckpt_val = ckpt_dir / "checkpoint_best_val.pth"
     ckpt_best = ckpt_dir / "checkpoint_best.pth"
     lion_ckpts = sorted(ckpt_dir.glob("tfpnp_check_*.pt"))
 
     if ckpt_val.exists():
+
+        # load best val checkpoint and print results
         ckpt = torch.load(ckpt_val, map_location=device, weights_only=False)
-        print(f"Loaded {ckpt_val.name}: epoch {ckpt.get('epoch', '?')}, "
-              f"val={ckpt.get('val_psnr', 0):.2f} dB")
+        print(f"Loaded {ckpt_val.name}: epoch {ckpt.get('epoch', '?')}, val={ckpt.get('val_psnr', 0):.2f} dB")
+    
     elif ckpt_best.exists():
+
+        # load best checkpoint and print results
         ckpt = torch.load(ckpt_best, map_location=device, weights_only=False)
         print(f"Loaded {ckpt_best.name}: epoch {ckpt['epoch']}")
+    
     elif lion_ckpts:
+    
+        # load latest TFPnP checkpoint and print results
         ckpt = torch.load(lion_ckpts[-1], map_location=device, weights_only=False)
         print(f"Loaded {lion_ckpts[-1].name}: epoch {ckpt['epoch']}")
     else:
         raise FileNotFoundError(f"No checkpoints in {ckpt_dir}")
 
+    # read config for σ and µ 
     cfg = read_metrics_config(ckpt_dir)
     sigma_range = tuple(cfg.get('sigma_range') or (1.0, 5.0))
     mu_range = tuple(cfg.get('mu_range') or (10.0, 100.0))
@@ -76,53 +88,59 @@ def load_checkpoint(ckpt_dir, device):
     print(f"  µ range: {mu_range}")
 
     if 'model_state_dict' in ckpt:
-        from ct_tfpnp.models.tfpnp_model import TFPnPModel
+
+        # load TFPnPModel and params
         model_params = TFPnPModel.default_parameters()
         model_params.sigma_min, model_params.sigma_max = sigma_range
         model_params.mu_min, model_params.mu_max = mu_range
-        model = TFPnPModel(model_parameters=model_params,
-                           geometry=experiment.experiment_params.geometry)
+        model = TFPnPModel(model_parameters=model_params, geometry=experiment.experiment_params.geometry)
         model.load_state_dict(ckpt['model_state_dict'])
         return model.policy.to(device).eval()
+    
     elif 'policy_state_dict' in ckpt:
-        policy = ResNetActor_ADMM(in_channels=5, n_action_steps=5,
-                                  sigma_range=sigma_range,
-                                  mu_range=mu_range).to(device)
+
+        # load ResNetActor_ADMM and params
+        policy = ResNetActor_ADMM(in_channels=5, n_action_steps=5, sigma_range=sigma_range, mu_range=mu_range).to(device)
         policy.load_state_dict(ckpt['policy_state_dict'])
         return policy.eval()
+    
     else:
         raise KeyError(f"Unknown checkpoint format. Keys: {list(ckpt.keys())}")
 
 
 def load_fbpconvnet(ckpt_path, geo, device, sanity_image=None):
-    """Load FBPConvNetImage from a checkpoint, with verification prints."""
+    """
+    Load FBPConvNetImage from a checkpoint, with verification prints.
+    """
+    
     print(f"Loading FBPConvNet from {ckpt_path}")
     fbpc_ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     fbpc_params = _FBPConvNetParent.default_parameters()
-    model = FBPConvNetImage(geometry_parameters=geo,
-                            model_parameters=fbpc_params).to(device)
+    model = FBPConvNetImage(geometry_parameters=geo, model_parameters=fbpc_params).to(device)
     load_result = model.load_state_dict(fbpc_ckpt['model_state_dict'])
     model.eval()
 
-    print(f"  Path:        {ckpt_path}")
-    print(f"  Epoch:       {fbpc_ckpt['epoch']}")
-    print(f"  Val PSNR:    {fbpc_ckpt['val_psnr']:.2f} dB")
+    print(f"Path:     {ckpt_path}")
+    print(f"Epoch:    {fbpc_ckpt['epoch']}")
+    print(f"Val PSNR: {fbpc_ckpt['val_psnr']:.2f} dB")
+    
     if 'config' in fbpc_ckpt:
-        print(f"  Config:      {fbpc_ckpt['config']}")
-    print(f"  Load result: {load_result}")
+        print(f"Config: {fbpc_ckpt['config']}")
+    
+    print(f"Load result: {load_result}")
 
     if sanity_image is not None:
         with torch.no_grad():
             test_out = model(to_4d(sanity_image))
-        print(f"  Output range: [{test_out.min():.3f}, {test_out.max():.3f}] "
-              f"(expect roughly [0, 2.5] for LION's µ scaling)")
+        print(f"Output range: [{test_out.min():.3f}, {test_out.max():.3f}] (expect roughly [0, 2.5] for LION's µ scaling)")
 
     return model
 
 
-def run_evaluation(test_images, test_labels, noise_levels, op, admm_step,
-                   policy, denoiser, fbpconv_model, device):
-    """If fbpconv_model is None, the FBPConvNet branch is skipped."""
+def run_evaluation(test_images, test_labels, noise_levels, op, admm_step, policy, denoiser, fbpconv_model, device):
+    """
+    If fbpconv_model is None, the FBPConvNet branch is skipped.
+    """
     all_results = {nl: {m: [] for m in METHODS} for nl in noise_levels}
 
     for noise_frac in noise_levels:
@@ -132,9 +150,7 @@ def run_evaluation(test_images, test_labels, noise_levels, op, admm_step,
             sino_clean = op.forward(gt)
             SCALE = sino_clean.max() / gt.max()
             torch.manual_seed(img_idx * 100)
-            sino_noisy = (sino_clean / SCALE
-                          + noise_frac * (sino_clean / SCALE).std()
-                          * torch.randn_like(sino_clean))
+            sino_noisy = (sino_clean / SCALE + noise_frac * (sino_clean / SCALE).std() * torch.randn_like(sino_clean))
             y = sino_noisy * SCALE
 
             # FBP
@@ -179,8 +195,7 @@ def run_evaluation(test_images, test_labels, noise_levels, op, admm_step,
                     if t > 0 and F.softmax(stop_logits, -1)[0, 1].item() > 0.5:
                         break
                     for i in range(5):
-                        x, z, u = admm_step(x, z, u, y,
-                                            sigma=sigma_seq[0, i], mu=mu_seq[0, i])
+                        x, z, u = admm_step(x, z, u, y, sigma=sigma_seq[0, i], mu=mu_seq[0, i])
             x_tfp = ls_scale(gt, x).clamp(min=0)
             all_results[noise_frac]['TFPnP'].append(compute_metrics(gt, x_tfp))
 
@@ -195,7 +210,9 @@ def run_evaluation(test_images, test_labels, noise_levels, op, admm_step,
 
 
 def print_summary_tables(all_results, noise_levels, noise_labels, has_haarpsi):
-    """Aligned per-noise tables + compact PSNR-only paper-format table."""
+    """
+    Aligned per-noise tables + compact PSNR-only paper-format table.
+    """
     METHOD_W = 18
     PSNR_W = 13     # fits "XX.XX±X.XX"
     DECIMAL_W = 15  # fits "0.XXXX±0.XXXX"
@@ -290,7 +307,9 @@ def save_csv(all_results, noise_levels, path):
 
 
 def save_per_image_metrics(all_results, test_labels, test_indices, noise_levels, path):
-    """Dump full per-image metrics for all methods/noise levels to JSON."""
+    """
+    Dump full per-image metrics for all methods/noise levels to JSON.
+    """
     if hasattr(test_indices, 'tolist'):
         idx_list = test_indices.tolist()
     else:
@@ -329,8 +348,7 @@ def plot_metrics_bars(all_results, n_test, noise_level, path):
         if metric not in results[METHODS[0]][0]:
             continue
         means = [np.mean([r[metric] for r in results[m]]) for m in METHODS]
-        bars = ax.bar(range(len(METHODS)), means, color=COLORS, alpha=0.9,
-                      edgecolor='white', linewidth=1.5, width=0.65)
+        bars = ax.bar(range(len(METHODS)), means, color=COLORS, alpha=0.9, edgecolor='white', linewidth=1.5, width=0.65)
         bars[-1].set_edgecolor('#c0392b')
         bars[-1].set_linewidth(2.5)
         ax.set_xticks(range(len(METHODS)))
@@ -341,21 +359,18 @@ def plot_metrics_bars(all_results, n_test, noise_level, path):
         fmt = '.2f' if metric == 'psnr' else '.3f'
         for i, m in enumerate(means):
             offset = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.015
-            ax.text(i, m + offset, f'{m:{fmt}}', ha='center',
-                    fontsize=10, fontweight='bold')
+            ax.text(i, m + offset, f'{m:{fmt}}', ha='center', fontsize=10, fontweight='bold')
         ax.set_ylim(bottom=0, top=ax.get_ylim()[1] * 1.08)
-    plt.suptitle(f'Reconstruction Quality at {noise_level*100:.1f}% Noise '
-                 f'— {n_test} Test Images',
-                 fontsize=12, fontweight='bold', y=0.95)
+    plt.suptitle(f'Reconstruction Quality at {noise_level*100:.1f}% Noise — {n_test} Test Images', fontsize=12, fontweight='bold', y=0.95)
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved {path}")
 
 
-def plot_per_image_psnr(all_results, test_labels, noise_level, path,
-                        n_select=3, group_gap=0.5):
-    """Per-image PSNR — TFPnP's worst losses and biggest wins vs next-best method.
+def plot_per_image_psnr(all_results, test_labels, noise_level, path, n_select=3, group_gap=0.5):
+    """
+    Per-image PSNR — TFPnP's worst losses and biggest wins vs next-best method.
 
     For each image, computes Δ = TFPnP − max(other methods). The most-negative
     Δs are TFPnP's biggest losses; the most-positive are its biggest wins.
@@ -367,9 +382,7 @@ def plot_per_image_psnr(all_results, test_labels, noise_level, path,
 
     other_methods = [m for m in METHODS if m != 'TFPnP']
     tfpnp_psnrs = np.array([r['psnr'] for r in results['TFPnP']])
-    other_psnrs = np.stack([
-        np.array([r['psnr'] for r in results[m]]) for m in other_methods
-    ], axis=0)
+    other_psnrs = np.stack([np.array([r['psnr'] for r in results[m]]) for m in other_methods], axis=0)
     next_best = other_psnrs.max(axis=0)
     delta = tfpnp_psnrs - next_best
 
@@ -397,9 +410,7 @@ def plot_per_image_psnr(all_results, test_labels, noise_level, path,
 
     for i, (method, color) in enumerate(zip(METHODS, COLORS)):
         psnrs = [results[method][idx]['psnr'] for idx in show_indices]
-        ax.bar(x_pos + i * width - offset, psnrs, width,
-               label=method, color=color, alpha=0.9,
-               edgecolor='white', linewidth=0.5)
+        ax.bar(x_pos + i * width - offset, psnrs, width, label=method, color=color, alpha=0.9, edgecolor='white', linewidth=0.5)
 
     labels_subset = [
         f"{test_labels[idx].replace('test_', '#')}\nΔ={delta[idx]:+.2f}"
@@ -414,25 +425,16 @@ def plot_per_image_psnr(all_results, test_labels, noise_level, path,
                    linewidth=1, alpha=0.6)
 
         trans = blended_transform_factory(ax.transData, ax.transAxes)
-        ax.text(smallest_count / 2 - 0.5, 1.02,
-                'TFPnP outperformed by the most',
-                transform=trans, ha='center', va='bottom',
-                fontsize=9, color='#555', style='italic')
-        ax.text(smallest_count + group_gap + largest_count / 2 - 0.5, 1.02,
-                "TFPnP's biggest advantage",
-                transform=trans, ha='center', va='bottom',
-                fontsize=9, color='#555', style='italic')
+        ax.text(smallest_count / 2 - 0.5, 1.02, 'TFPnP outperformed by the most', transform=trans, ha='center', va='bottom', fontsize=9, color='#555', style='italic')
+        ax.text(smallest_count + group_gap + largest_count / 2 - 0.5, 1.02, "TFPnP's biggest advantage", transform=trans, ha='center', va='bottom', fontsize=9, color='#555', style='italic')
 
-        title = (f'Per-Image PSNR at {noise_level*100:.1f}% Noise — '
-                 f"TFPnP's {smallest_count} largest losses and "
-                 f"{largest_count} biggest wins vs. next-best method")
+        title = (f"Per-Image PSNR at {noise_level*100:.1f}% Noise — TFPnP's {smallest_count} largest losses and {largest_count} biggest wins vs. next-best method")
     else:
-        title = f'Per-Image PSNR at {noise_level*100:.1f}% Noise'
+        title = f"Per-Image PSNR at {noise_level*100:.1f}% Noise"
 
     ax.set_ylabel('PSNR (dB)', fontsize=10)
     ax.set_title(title, fontsize=11, fontweight='bold', pad=30)
-    ax.legend(fontsize=8, ncol=n_methods, loc='upper center',
-              bbox_to_anchor=(0.5, -0.18), frameon=False)
+    ax.legend(fontsize=8, ncol=n_methods, loc='upper center', bbox_to_anchor=(0.5, -0.18), frameon=False)
     ax.grid(axis='y', alpha=0.2, linewidth=0.5)
     ax.set_axisbelow(True)
     ax.set_ylim(bottom=0)
@@ -453,18 +455,15 @@ def plot_metrics_vs_noise(all_results, noise_levels, path):
                      for nl in noise_levels]
             lw = 2.8 if method == 'TFPnP' else 1.8
             ms = 9 if method == 'TFPnP' else 6
-            ax.plot(noise_pcts, means, marker='o', lw=lw, ms=ms,
-                    color=color, label=method, alpha=0.95)
+            ax.plot(noise_pcts, means, marker='o', lw=lw, ms=ms, color=color, label=method, alpha=0.95)
         ax.set_xlabel('Noise level (%)', fontsize=10)
         ax.set_ylabel(ylabel, fontsize=10)
         ax.set_xticks(noise_pcts)
         ax.grid(True, alpha=0.2, linewidth=0.5)
         ax.set_axisbelow(True)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', ncol=len(METHODS),
-               bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=9)
-    plt.suptitle('Reconstruction Quality vs Noise Level',
-                 fontsize=12, fontweight='bold', y=0.95)
+    fig.legend(handles, labels, loc='lower center', ncol=len(METHODS), bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=9)
+    plt.suptitle('Reconstruction Quality vs Noise Level', fontsize=12, fontweight='bold', y=0.95)
     plt.tight_layout(rect=[0, 0.05, 1, 0.93])
     plt.savefig(path, bbox_inches='tight')
     plt.close()
@@ -474,14 +473,10 @@ def plot_metrics_vs_noise(all_results, noise_levels, path):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--experiment_name", required=True)
-    p.add_argument("--n_test_subset", type=int, default=0,
-                   help="Max test images. 0 = use all (389 from LION test split).")
-    p.add_argument("--noise_levels", nargs="+", type=float,
-                   default=[0.05, 0.075, 0.10])
-    p.add_argument("--denoiser_path", type=str,
-                   default="/home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth")
-    p.add_argument("--fbpconvnet_ckpt", type=str, default=None,
-                   help="Path to FBPConvNet checkpoint. If None, skip that baseline.")
+    p.add_argument("--n_test_subset", type=int, default=0, help="Max test images. 0 = use all (389 from LION test split).")
+    p.add_argument("--noise_levels", nargs="+", type=float, default=[0.05, 0.075, 0.10])
+    p.add_argument("--denoiser_path", type=str, default="/home/eaz21/rds/hpc-work/eaz21/results/baselines/drunet_gray.pth")
+    p.add_argument("--fbpconvnet_ckpt", type=str, default=None, help="Path to FBPConvNet checkpoint. If None, skip that baseline.")
     args = p.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

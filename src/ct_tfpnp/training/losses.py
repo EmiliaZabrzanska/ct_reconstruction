@@ -65,7 +65,14 @@ def compute_policy_loss_discrete(policy, critic, transitions, gamma=0.99):
 
 def compute_policy_loss_continuous(policy, critic, admm_step, transitions,
                                     m=5, N=6):
-    """Model-based DDPG loss for continuous parameters pi_2 (eq. 17)."""
+    """
+    Model-based DDPG loss for continuous parameters pi_2 (eq. 17).
+    
+    Uses V^pi(p(s, a)) as the practical objective, following standard
+    DDPG implementations. Wei et al.'s theoretical formulation uses
+    Q^pi(s, a) ≈ r + gamma * V^pi(p(s, a)); dropping r simplifies the
+    computation with negligible effect on the resulting gradient.
+    """
     device = next(policy.parameters()).device
     v_nexts = []
 

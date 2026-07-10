@@ -19,10 +19,8 @@ FBPCONVNET_CKPT="/home/eaz21/rds/hpc-work/eaz21/results/learned/fbpconvnet_pat_2
 
 mkdir -p logs
 
-# Sanity check: denoiser must exist before we start
 if [ ! -f "$DENOISER_PATH" ]; then
     echo "ERROR: CT-DRUNet checkpoint not found at $DENOISER_PATH"
-    echo "Run train_drunet_ct.sh first and wait for it to complete."
     exit 1
 fi
 
@@ -32,30 +30,29 @@ echo "Node:       $(hostname)"
 echo "GPU:        $(nvidia-smi --query-gpu=name --format=csv,noheader)"
 echo "Experiment: $EXPERIMENT_NAME"
 echo "Denoiser:   $DENOISER_PATH (CT-specific)"
-echo "Config:     250 train × 80 epochs (20,000 episodes, ~28h)"
+echo "Config:     250 train × 80 epochs — stabilised for CT-DRUNet"
 echo "Start:      $(date)"
 echo "================================================="
 
-# ── Train ─────────────────────────────────────────────────────────────
 python scripts/train_tfpnp.py \
     --output_dir "results/learned/$EXPERIMENT_NAME" \
     --n_train 250 \
     --n_val 50 \
     --n_epochs 80 \
-    --batch_size 8 \
-    --n_grad_steps 4 \
+    --batch_size 4 \
+    --n_grad_steps 2 \
     --m 5 \
     --N 6 \
     --eta 0.05 \
     --lr_policy 3e-5 \
-    --lr_critic 1e-4 \
+    --lr_critic 3e-5 \
     --lr_pi2 1e-6 \
-    --pi2_warmup 5 \
-    --pi2_loss_scale 0.01 \
+    --pi2_warmup 15 \
+    --pi2_loss_scale 0.001 \
     --noise_std 0 \
     --buffer_size 5000 \
-    --sigma_floor 1.0 \
-    --sigma_ceil 10.0 \
+    --sigma_floor 4.0 \
+    --sigma_ceil 12.0 \
     --mu_floor 7.0 \
     --mu_ceil 50.0 \
     --reward_type psnr \

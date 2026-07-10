@@ -46,17 +46,15 @@ class ResNetActor_ADMM(nn.Module):
     ):
         super().__init__()
         self.n_action_steps = n_action_steps
-        self.sigma_range = sigma_range          # ← new
-        self.mu_range = mu_range                # ← new
+        self.sigma_range = sigma_range         
+        self.mu_range = mu_range              
         self.sigma_min, self.sigma_max = sigma_range
         self.mu_min, self.mu_max = mu_range
 
-        # --- Backbone: ResNet-18 with modified first conv for N input channels ---
+        # --- Backbone: ResNet-18 modified per Wei et al. (2022) Table 1 ---
         backbone = tv_models.resnet18(weights=None)
-        # Replace the first conv: ImageNet expects 3 channels, we have in_channels
-        backbone.conv1 = nn.Conv2d(
-            in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False
-        )
+        backbone.conv1 = nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        backbone.maxpool = nn.Identity()
         # Remove the final FC layer; use the 512-dim feature vector
         self.feature_extractor = nn.Sequential(*list(backbone.children())[:-1])
 
