@@ -1,13 +1,14 @@
 # ==============================
-# DATA (Never commit real data)
+# DATA (never commit real data)
 # ==============================
 data/*
-!data/debug_subset/
 !data/README.md
+!data/subset_10/          
 
 # ==============================
 # RESULTS & CHECKPOINTS
 # ==============================
+# Large artefacts are ignored; small metrics (results/metrics/) are tracked.
 results/baselines/
 results/learned/
 !results/.gitkeep
@@ -23,23 +24,44 @@ results/learned/
 logs/
 *.log
 slurm-*.out
+slurm-*.err
+
 # ==============================
 # PYTHON
 # ==============================
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 .ipynb_checkpoints/
 .env
 .venv/
 venv/
 *.egg-info/
+build/
+dist/
+.eggs/
+
+# setuptools_scm writes this at build time
+src/ct_tfpnp/version.py
+
+# ==============================
+# TEST / TYPE CACHES
+# ==============================
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================
+# DOCS BUILD
+# ==============================
+docs/_build/
 
 # ==============================
 # OS
 # ==============================
 .DS_Store
+Thumbs.db
 
 # ==============================
 # LATEX BUILD FILES
@@ -51,27 +73,19 @@ report/*.toc
 report/*.synctex.gz
 report/*.blg
 report/*.bbl
+report/*.bcf
+report/*.run.xml
 report/*.fls
 report/*.fdb_latexmk
 report/*.lof
 report/*.lot
 
 # ==============================
-# JUPYTER
+# FIGURES
 # ==============================
-.ipynb_checkpoints/
-
-# ==============================
-# HIDDEN CACHE
-# ==============================
-.cache/
-
-# ==============================
-# FIGURES (generated, not source)
-# ==============================
-
-#figures/*
-#!figures/.gitkeep
+# Currently TRACKED (report figures kept for reproducibility).
+# figures/*
+# !figures/.gitkeep
 
 # ==============================
 # DATA ARCHIVES
@@ -79,4 +93,5 @@ report/*.lot
 *.tar.gz
 *.zip
 *.h5
-*.hdf5
+*.hdf5data/subset_10/
+/data/subset_10/

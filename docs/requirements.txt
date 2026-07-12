@@ -1,0 +1,12 @@
+# Documentation build only.
+#
+# LION / tomosipo / astra / piq are MOCKED in conf.py, so `make html` runs on a laptop with no GPU and no working tomosipo install.
+
+sphinx>=7.2
+furo>=2024.1.29
+myst-parser>=2.0
+sphinx-autobuild>=2024.2.4 
+
+torch>=2.0
+torchvision>=0.15
+numpy

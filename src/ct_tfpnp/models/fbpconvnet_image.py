@@ -18,12 +18,20 @@ class FBPConvNetImage(FBPConvNet):
     """
 
     def forward(self, image):
-        # Skip the parent's `image = fdk(x, self.op)` — input is the image.
+        """
+        Args:
+            image: pre-computed FBP reconstruction, shape (B, 1, H, W).
+
+        Returns:
+            Post-processed reconstruction, same shape.
+        """
+        # Skip the parent's `image = fdk(x, self.op)`
         block_1_res = self.block_1_down(image)
         block_2_res = self.block_2_down(self.down_1(block_1_res))
         block_3_res = self.block_3_down(self.down_2(block_2_res))
         block_4_res = self.block_4_down(self.down_3(block_3_res))
 
+        # Bottleneck and decoder with skip connections
         res = self.block_bottom(self.down_4(block_4_res))
         res = self.block_1_up(torch.cat((block_4_res, self.up_1(res)), dim=1))
         res = self.block_2_up(torch.cat((block_3_res, self.up_2(res)), dim=1))

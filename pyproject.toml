@@ -12,19 +12,22 @@ license = { file = "LICENSE" }
 authors = [
     { name = "Emilia Zabrzanska", email = "eaz21@cam.ac.uk" },
 ]
-keywords = ["computed-tomography", "inverse-problems", "plug-and-play", "reinforcement-learning"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering :: Medical Science Apps.",
-]
+
 dependencies = [
-    "numpy",
+    "numpy<2",
     "torch",
+    "torchvision",  
     "matplotlib",
     "scipy",
+    "pandas",     
     "tqdm",
 ]
+
+[project.optional-dependencies]
+# pip install -e ".[metrics]"  etc.
+metrics = ["piq"]                                  
+test = ["pytest"]
+docs = ["sphinx>=7.2", "furo", "myst-parser"]
 
 [project.urls]
 "Source" = "https://gitlab.developers.cam.ac.uk/phy/data-intensive-science-mphil/assessments/projects/eaz21"
@@ -34,3 +37,11 @@ write_to = "src/ct_tfpnp/version.py"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Keep pytest config here rather than a separate pytest.ini
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]

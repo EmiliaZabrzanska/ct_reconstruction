@@ -1,20 +1,32 @@
-name: ct_recon
+# Conda environment for the TFPnP CT reproduction.
+#
+#   conda env create -f environment.yml
+#   conda activate mphil_ct
+#   pip install -e .
+
+name: mphil_ct
+
 channels:
   - pytorch
   - nvidia
   - conda-forge
-  - defaults
+
 dependencies:
   - python=3.11
   - pytorch
-  - torchvision
+  - torchvision          
   - pytorch-cuda=12.1
-  - numpy
+  - numpy<2
   - scipy
+  - pandas                 
   - matplotlib
   - tqdm
+  - astra-toolbox>=2.1
   - ipykernel
   - pytest
+
   - pip
   - pip:
-    - git+https://github.com/ahendriksen/tomosipo.git
+      - piq                                           
+      - git+https://github.com/ahendriksen/tomosipo.git
+      - git+https://github.com/CambridgeCIA/LION.git  

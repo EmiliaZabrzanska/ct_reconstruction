@@ -1,21 +1,23 @@
 """
 Filtered Backprojection (FBP) using LION's CT operator.
 
-Applies a Ram-Lak (ramp) filter in the frequency domain to the sinogram
-before backprojection. This is the standard FBP reconstruction algorithm
-and serves as the x₀ initialisation for PnP-ADMM.
+Applies a ramp filter in the frequency domain to the sinogram before
+backprojection. This is the standard analytic CT reconstruction and serves as
+the x0 initialisation for PnP-ADMM.
 
-This implementation is designed to work with LION's tomosipo-backed operator
-and keeps everything in PyTorch/CUDA throughout.
+Everything stays in PyTorch/CUDA throughout, so the FBP is differentiable and
+can be used inside an autograd graph if needed.
 """
 
+import math
+
 import torch
-import numpy as np
 
 
-def ramp_filter(sino: torch.Tensor) -> torch.Tensor:
+
+def ramp_filter(sino: torch.Tensor):
     """
-    Apply Ram-Lak (ramp) filter to a sinogram in the frequency domain.
+    Apply a ramp filter to a sinogram along the detector axis.
 
     Args:
         sino: sinogram tensor of shape (1, n_angles, n_det)
@@ -23,20 +25,23 @@ def ramp_filter(sino: torch.Tensor) -> torch.Tensor:
     Returns:
         filtered sinogram, same shape
     """
+    # define number of detector pixels
     n_det = sino.shape[-1]
 
     # Build ramp filter in frequency domain
     freqs = torch.fft.fftfreq(n_det, device=sino.device)
     ramp  = torch.abs(freqs)
 
-    # Apply filter to each projection independently
-    sino_fft      = torch.fft.fft(sino, dim=-1)
+    # Apply filter to each projection independently along detector axis
+    sino_fft = torch.fft.fft(sino, dim=-1)
+
+    # inverse FFT to get filtered sinogram back in spatial domain
     sino_filtered = torch.fft.ifft(sino_fft * ramp, dim=-1).real
 
     return sino_filtered
 
 
-def fbp(sino: torch.Tensor, op, n_angles: int = 30) -> torch.Tensor:
+def fbp(sino: torch.Tensor, op, clamp_nonneg: bool = True):
     """
     Filtered Backprojection reconstruction.
 
@@ -46,15 +51,39 @@ def fbp(sino: torch.Tensor, op, n_angles: int = 30) -> torch.Tensor:
     Args:
         sino:     sinogram, shape (1, n_angles, n_det)
         op:       LION CT operator
-        n_angles: number of projection angles (default 30)
+        clamp_nonneg: whether to clamp the reconstruction to [0, ∞)
 
     Returns:
         FBP reconstruction, shape (1, H, W), clipped to [0, ∞)
     """
-    sino_filtered = ramp_filter(sino)
-    recon         = op.adjoint(sino_filtered)
+    n_angles = sino.shape[-2]
+    scaling = math.pi / (2.0 * n_angles)
 
-    # FBP normalisation for parallel beam with unit spacing
-    recon = recon * (np.pi / (2.0 * n_angles))
+    # backproject filtered sinogram
+    recon = op.adjoint(ramp_filter(sino)) * scaling
 
-    return recon.clamp(min=0)
+    # clamp to non-negative vals
+    return recon.clamp(min=0) if clamp_nonneg else recon
+
+
+def calibrate_to_data(x: torch.Tensor, y: torch.Tensor, op):
+    """
+    Rescale a reconstruction by the least-squares factor that best explains the
+    measurements: alpha = <Ax, y> / <Ax, Ax>, returning alpha * x.
+
+    Args:
+        x:  reconstruction, shape (1, H, W).
+        y:  measured sinogram, shape (1, n_angles, n_det).
+        op: LION CT operator.
+
+    Returns:
+        Rescaled reconstruction, same shape as x.
+    """
+    # forward project x to get Ax
+    Ax = op.forward(x)
+    
+    # compute least-squares scaling factor 
+    alpha = (Ax * y).sum() / ((Ax * Ax).sum() + 1e-12)
+
+    # return scaled reconstruction
+    return x * alpha
