@@ -1,5 +1,4 @@
 \documentclass[11pt,a4paper]{article}
-
 \usepackage[margin=25mm]{geometry}
 \usepackage{graphicx}
 \usepackage{parskip}
@@ -14,15 +13,18 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{cleveref}
 \usepackage{float}
-
-\title{\vspace{-2cm}Reproducing a Tuning-Free Plug-and-Play algorithm for Sparse-View CT \\
-\vspace{0.5cm}
-\subtitle Executive Summary}
+\title{\vspace{-2cm}Reproducing a Tuning-Free Plug-and-Play algorithm for Sparse-View CT \\[0.5cm]
+{\large Executive Summary}}
 \author{Emilia Zabrzanska}
 \date{July 2026}
-
 \begin{document}
 \maketitle
+ 
+% ---- WORD COUNT ON FRONT COVER (required by the course policy) ----
+\begin{center}
+{\small Word count: \textbf{[INSERT FINAL COUNT]} (excluding references)}
+\end{center}
+\vspace{0.3cm}
 
 Sparse-view computed tomography (CT) reduces patient radiation dose by acquiring fewer projection angles, at the cost of creating a more ill-posed reconstruction problem. The Tuning-Free Plug-and-Play (TFPnP) method of~\citet{Wei2022TFPnP} addresses this by using reinforcement learning (RL) to select the ADMM hyperparameters automatically. This project reproduces TFPnP from scratch within the LION toolbox~\citep{Biguri2024LION} for 30-view parallel-beam CT on the LIDC-IDRI dataset, and uses the reproduction as the basis for two extensions, exploring a CT-specific denoiser as opposed to the natural image version, and carrying out several reward-shaping ablations. The result is delivered as a documented, tested Python package integrated with LION, together with an upstream fix on the FBPConvNet code (pull request~\#184).
 
@@ -47,5 +49,4 @@ Sparse-view computed tomography (CT) reduces patient radiation dose by acquiring
 
 \bibliographystyle{plainnat}
 \bibliography{bibliography}
-
 \end{document}

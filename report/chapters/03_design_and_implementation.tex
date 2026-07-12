@@ -21,11 +21,11 @@ The full pipeline covers eleven trained TFPnP runs and two baseline model checkp
 \section{Geometry, data, and noise conventions}
 \label{sec:geometry-noise}
 
-All experiments use a sparse 30-view parallel-beam geometry, matching~\citet{Wei2022TFPnP}. As LION had no matching preset, a custom \texttt{Geometry} object was constructed with 30 angles uniformly spaced over $[0, \pi)$, a $512 \times 512$ image, and 724 detectors ($\lceil 512\sqrt{2}\,\rceil$, chosen to cover the image diagonal). The forward operator is LION's tomosipo-backed operator~\citep{Hendriksen2021Tomosipo}, whereas \citet{Wei2022TFPnP} use TorchRadon~\citep{Ronchetti2020TorchRadon}; the two are mathematically equivalent but differ in scaling conventions (\Cref{sec:admm-gradient}).
+All experiments use a sparse 30-view parallel-beam geometry, matching~\citet{Wei2022TFPnP}. As LION had no matching preset, a custom \texttt{Geometry} object was constructed with 30 angles uniformly spaced over $[0, \pi)$, a $512 \times 512$ image, and 724 detectors ($\lceil 512\sqrt{2}\,\rceil$, chosen to cover the image diagonal). The forward operator is LION's tomosipo-backed operator~\citep{Hendriksen2021Tomosipo}, whereas \citet{Wei2022TFPnP} use TorchRadon~\citep{Ronchetti2020TorchRadon}. The two are mathematically equivalent but differ in scaling conventions (\Cref{sec:admm-gradient}).
 
-Training and evaluation data come from LIDC-IDRI~\citep{Armato2011LIDC}, split at the patient level into 80/10/10 partitions using LION's default loader, providing approximately 3300, 401, and 389 slices in the training, validation, and test splits. \citet{Wei2022TFPnP} evaluate on 50 slices from the COVID-19 CT dataset~\citep{Ma2020COVID19}, so our test set is substantially larger. Image intensities are kept in linear attenuation coefficient ($\mu$) units (approximately $[0, 2.5]$\,cm$^{-1}$), the convention set by LION's \texttt{from\_HU\_to\_mu} transform, rather than rescaled to $[0,1]$.
+Training and evaluation data come from LIDC-IDRI~\citep{Armato2011LIDC}, which issplit at the patient level into 80/10/10 partitions using LION's default loader, providing approximately 3300, 401, and 389 slices in the training, validation, and test splits. \citet{Wei2022TFPnP} evaluate on 50 slices from the COVID-19 CT dataset~\citep{Ma2020COVID19}, so our test set is substantially larger. Image intensities are kept in linear attenuation coefficient ($\mu$) units (approximately $[0, 2.5]$\,cm$^{-1}$), the convention set by LION's \texttt{from\_HU\_to\_mu} transform, rather than being rescaled to $[0,1]$.
 
-Sinogram noise follows~\citet{Wei2022TFPnP}'s percentage-of-signal convention, with additive Gaussian noise at 5\%, 7.5\%, or 10\% of the clean sinogram's standard deviation and deterministic per-image seeds so paired comparisons use identical realisations. LION also provides a more physically realistic Poisson-Gaussian noise model, but it takes physical parameters (photon count, detector gain) rather than a percentage fraction, so its levels do not map onto the paper's conditions and therefore the percentage convention is retained to keep the comparison close to the paper.
+Sinogram noise follows~\citet{Wei2022TFPnP}'s percentage-of-signal convention, with additive Gaussian noise at 5\%, 7.5\%, or 10\% of the clean sinogram's standard deviation and per-image seeds so paired comparisons use identical realisations. LION provides a more physically realistic Poisson-Gaussian noise model, but it takes physical parameters (photon count, detector gain) rather than a percentage fraction, so its levels do not map onto the paper's conditions and therefore the percentage convention is kept to keep the comparison close to the paper.
 
 One consequence of retaining native $\mu$ units is that PSNR values here are approximately $5$\,dB higher than those in~\citet{Wei2022TFPnP}, affecting cross-study comparison but not within-experiment rankings (\Cref{sec:metrics}, \Cref{sec:direct-comparison}).
 
@@ -35,7 +35,7 @@ One consequence of retaining native $\mu$ units is that PSNR values here are app
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.5\linewidth]{../figures/12/01_sample_train_image.pdf}
-    \caption{A lung slice from the LIDC-IDRI training split, in native $\mu$ units (approximately $[0,2.3]$\,cm$^{-1}$).}
+    \caption{A lung slice from LIDC-IDRI, in native $\mu$ units (approximately $[0,2.3]$\,cm$^{-1}$).}
     \label{fig:sample_lidc}
 \end{figure}
 
@@ -47,9 +47,9 @@ One consequence of retaining native $\mu$ units is that PSNR values here are app
 
 The policy network follows~\citet{Wei2022TFPnP}. A ResNet-18 backbone extracts features from a five-channel input consisting of the current ADMM iterates $(x, z, u)$, a noise-level map, and an iteration-progress map. Two heads share the resulting 512-dimensional feature vector, a two-way termination head predicting whether to stop, and a parameter head predicting the next $m = 5$ pairs of $(\sigma, \mu)$ via a sigmoid rescaled to the configured action ranges.
 
-The backbone is torchvision's ResNet-18 with only the first convolution modified to accept five input channels. Two structural details differ from Table~1 of~\citet{Wei2022TFPnP}, as their stem is $3\times3$ whereas torchvision's is $7\times7$, and our slices are $512\times512$ so layer4 emits $16\times16$ rather than $4\times4$, but this is absorbed by an adaptive average pool. The value network also departs from the paper as Table~1 specifies the policy feature extractor with batch normalisation replaced by weight normalisation and ReLU by TReLU, whereas ours is eight residual blocks at width 64 with no normalisation and standard ReLU. It preserves the removal of batch normalisation but not the replacements, with consequences analysed in~\Cref{sec:in-domain-gap} and~\Cref{sec:corrections}.
+The backbone is torchvision's ResNet-18 with only the first convolution modified to accept five input channels. Two structural details differ from Table~1 of~\citet{Wei2022TFPnP}, as their stem is $3\times3$ whereas torchvision's is $7\times7$, and our slices are $512\times512$ so layer4 outputs $16\times16$ rather than $4\times4$, but this is absorbed by an adaptive average pool. The value network also departs from the paper as Table~1 specifies the policy feature extractor with batch normalisation replaced by weight normalisation and ReLU by TReLU, whereas ours is eight residual blocks at width 64 with no normalisation and standard ReLU,  preserving the removal of batch normalisation but not the replacements, with consequences analysed in~\Cref{sec:in-domain-gap}.
 
-Policy action ranges are $\sigma \in [1, 5]$ (calibrated to natural-image DRUNet's operating region (\Cref{sec:calibration})) and $\mu \in [10, 100]$ (balances against the norm data-fidelity gradient (\Cref{sec:admm-gradient})). The RL formulation matches the paper's equations 15--17, with the value network trained on a temporal-difference loss ($\gamma = 0.99$) against a slowly-updated target network (EMA rate $10^{-3}$). The termination policy $\pi_1$ uses REINFORCE with a value baseline, and the reward is $r = \Delta\text{PSNR} - \eta$ with $\eta = 0.05$. Learning rates are $10^{-4}$ (critic), $3\times10^{-5}$ (shared features and termination head), and $10^{-6}$ (parameter head, kept low for the sensitivity of $\pi_2$'s gradient through the ADMM rollout). The paper's $m = 5$, $N = 6$, $\eta = 0.05$ are preserved exactly.
+The policy action ranges are $\sigma \in [1, 5]$ (calibrated to natural-image DRUNet's operating region (\Cref{sec:calibration})) and $\mu \in [10, 100]$ (balances against the norm data-fidelity gradient (\Cref{sec:admm-gradient})). The RL formulation matches the paper's equations 15--17, with the value network trained on a temporal-difference loss ($\gamma = 0.99$) against a slowly-updated target network (EMA rate $10^{-3}$). The termination policy $\pi_1$ uses REINFORCE with a value baseline, and the reward is $r = \Delta\text{PSNR} - \eta$ with $\eta = 0.05$. Learning rates are $10^{-4}$ (critic), $3\times10^{-5}$ (shared features and termination head), and $10^{-6}$ (parameter head, kept low for the sensitivity of $\pi_2$'s gradient through the ADMM rollout). The paper's $m = 5$, $N = 6$, $\eta = 0.05$ are preserved exactly.
 
 % ============================================================
 %  Section 3.4 — ADMM step and z-step gradient normalisation
@@ -57,16 +57,16 @@ Policy action ranges are $\sigma \in [1, 5]$ (calibrated to natural-image DRUNet
 \section{ADMM step and z-step gradient normalisation}
 \label{sec:admm-gradient}
 
-The ADMM environment implements the paper's equations 7--9, with the $x$-step applying the DRUNet denoiser as an implicit prior, the $z$-step enforcing data fidelity, and the $u$-step updating the dual variable. The $z$-step is solved by six gradient descent iterations rather than in closed form, so that the model-based DDPG update for $\pi_2$ can backpropagate through it using automatic differentiation.
+The ADMM environment implements the paper's equations 7--9, with the $x$-step applying the DRUNet denoiser as an implicit prior, the $z$-step enforcing data fidelity, and the $u$-step updating the dual variable. The $z$-step is solved by six gradient descent iterations, allowing the model-based DDPG update for $\pi_2$ to backpropagate through it using automatic differentiation.
 
-LION's adjoint $A^{\top}$ is the raw, unnormalised backprojection of tomosipo's discrete Radon transform, so $A^{\top}(Az)$ produces per-voxel values far larger than the input image. Without adjustment, the data-fidelity gradient $A^{\top}(Az - y)$ would dominate the proximal term $\mu(z - \text{target})$ for any reasonable $\mu$, making the policy's $\mu$ predictions meaningless. The backprojected residual is therefore normalised to unit maximum before combining with the proximal term,
+LION's adjoint $A^{\top}$ is the raw, unnormalised backprojection of tomosipo's discrete Radon transform, so $A^{\top}(Az)$ produces per-voxel values far larger than the input image. Without adjustment, the data-fidelity gradient $A^{\top}(Az - y)$ would dominate the proximal term $\mu(z - \text{target})$ for any reasonable $\mu$, making the policy's $\mu$ predictions meaningless. The backprojected residual is therefore normalised to unit maximum before being combined with the proximal term
 
 \begin{equation}
 \text{grad} = \frac{A^{\top}r}{\|A^{\top}r\|_\infty + \epsilon} +
               \mu(z - \text{target}),
 \end{equation}
 
-where $r = Az - y$, $\text{target} = x + u$, and $\epsilon = 10^{-8}$. The step size is scaled as $\alpha / (1 + \mu)$ with $\alpha = 1$ to keep the update bounded as $\mu$ grows. Our absolute $\mu$ values therefore differ from the paper's in scale but preserve their role in the ADMM balance, reflected in the $\mu \in [10, 100]$ range. This normalisation is a pragmatic device that keeps $\mu$ meaningful under LION's operator scaling rather than a principled descent step.
+where $r = Az - y$, $\text{target} = x + u$, and $\epsilon = 10^{-8}$, and the step size is scaled as $\alpha / (1 + \mu)$ with $\alpha = 1$ to keep the update bounded as $\mu$ grows. Our absolute $\mu$ values therefore differ from the paper's in scale but preserve their role in the ADMM balance, reflected in the $\mu \in [10, 100]$ range. This normalisation keeps $\mu$ meaningful under LION's operator scaling.
 
 % ============================================================
 %  Section 3.5 — Baselines
@@ -78,13 +78,13 @@ The reproduction is validated against five baselines. Three of the paper's basel
 
 \textbf{FBP} applies a Ram-Lak filter followed by backprojection through LION's operator, with the analytical normalisation $\pi / (2N)$ for $N = 30$, clamped to non-negative values.
 
-\textbf{TV reconstruction} uses proximal gradient descent (200 iterations) with total variation at $\lambda = 0.01$, non-negativity enforced each iteration.
+\textbf{TV reconstruction} uses proximal gradient descent (200 iterations) with total variation at $\lambda = 0.01$ and non-negativity enforced each iteration.
 
-\textbf{DRUNet alone} applies the natural-image DRUNet as a single pass over the FBP reconstruction at fixed $\sigma = 10$. It is not one of the paper's baselines, but provides a lower bound illustrating how much of TFPnP's performance comes from ADMM's iterative refinement rather than the denoiser itself.
+\textbf{DRUNet alone} applies the natural-image DRUNet as a single pass over the FBP reconstruction at fixed $\sigma = 10$. It is not one of the paper's baselines, but provides a lower bound illustrating how much of TFPnP's performance comes from ADMM's iterative refinement rather from than the denoiser itself.
 
-\textbf{FBPConvNet}~\citep{Jin2017FBPConvNet} is a five-stage U-Net trained end-to-end on the LIDC training split (250 patients, 80 epochs) using LION's implementation, MSE loss, and Adam at $10^{-4}$, at a fixed 5\% noise level. This departs from~\citet{Jin2017FBPConvNet}'s clean-projection protocol and from~\citet{Wei2022TFPnP}'s FBPconv, whose near-constant PSNRs across noise levels (23.00, 22.94, 22.86\,dB) imply mixed-noise training. Fixed 5\% training makes evaluation at 7.5\% and 10\% out-of-distribution, and is central to the reversal narrative discussed in~\Cref{sec:headline}.
+\textbf{FBPConvNet}~\citep{Jin2017FBPConvNet} is a five-stage U-Net trained on the LIDC training split (250 patients, 80 epochs) using LION's implementation, MSE loss, and Adam at a fixed 5\% noise level. This departs from~~\citet{Wei2022TFPnP}'s FBPconv, whose near-constant PSNRs across noise levels (23.00, 22.94, 22.86\,dB) suggests mixed-noise training. Fixed 5\% training therefore makes evaluation at 7.5\% and 10\% out-of-distribution, and is central to the reversal narrative discussed in~\Cref{sec:headline}.
 
-\textbf{Fixed PnP-ADMM} uses the same ADMM environment as TFPnP with hand-calibrated $\sigma = 1.5$, $\mu = 20$, which were selected as operating point maximising PSNR on a preliminary sweep. Any improvement of TFPnP over it can be attributed to policy-based adaptation.
+\textbf{Fixed PnP-ADMM} uses the same ADMM environment as TFPnP with hand-calibrated $\sigma = 1.5$, $\mu = 20$, which were selected as they maximised PSNR on a preliminary sweep. Any improvement of TFPnP over it can be attributed to policy-based adaptation.
 
 % ============================================================
 %  Section 3.6 — CT-specific DRUNet training
@@ -123,22 +123,22 @@ Reconstruction quality is evaluated with PSNR, structural similarity (SSIM)~\cit
     \footnotesize
     \caption{Implementation choices differing from \citet{Wei2022TFPnP}.}
     \label{tab:implementation-differences}
-    \begin{tabular}{L{3.5cm}L{3cm}L{3cm}L{4cm}}
+    \begin{tabular}{L{3cm}L{3cm}L{3cm}L{4.5cm}}
         \toprule
         Aspect                & \citet{Wei2022TFPnP} & Ours & Reason \\
         \midrule
         CT geometry            & 30-view TorchRadon        & 30-view custom LION \texttt{Geometry}  & LION had no matching preset \\ \hline
-        Detector count         & 182                       & 724 ($\lceil 512\sqrt{2}\,\rceil$) & Cover image diagonal without truncation \\ \hline
+        Detector count         & 182                       & 724 ($\lceil 512\sqrt{2}\,\rceil$) & Cover image diagonal \\ \hline
         Forward projector      & TorchRadon                & LION and tomosipo & LION native \\ \hline
-        Policy backbone stem   & $3\times3$                & $7\times7$ (torchvision default) & Stage widths and $/32$ downsampling unchanged, retraining to match was outside the compute budget \\ \hline
-        Value network          & Policy feature extractor with weight norm + TReLU & Eight residual blocks at width 64, no normalisation, standard ReLU & Simpler BN-free critic \\ \hline
-        Policy input resolution & $128\times128$           & $512\times512$ & ADMM state passed at full resolution \\ \hline
+        Policy backbone stem   & $3\times3$                & $7\times7$ (torchvision default) & Downsampling and stage widths unchanged, retraining was outside compute budget \\ \hline
+        Value network          & Policy feature extractor, weight norm, TReLU & 8 Residual blocks, unnormalised, ReLU & Simpler BN-free critic \\ \hline
+        Policy input          & $128\times128$           & $512\times512$ & ADMM state at full resolution \\ \hline
         Image intensity scale  & [0, 1] normalised         & Native $\mu$ & Preserve physical units \\ \hline
-        z-step gradient norm   & None                      & Normalised $A^{\top}r$ & Compensate for LION operator scaling \\ \hline
-        PSNR data range        & Not stated                & Per-image $x_{\text{gt}}.\text{max}()$ & Matches~\texttt{data\_range} in LION conventions \\ \hline
+        z-step gradient norm   & None                      & Normalised $A^{\top}r$ & LION operator scaling \\ \hline
+        PSNR data range        & Not stated                & Per-image $x_{\text{gt}}.\text{max}()$ & Matches LION~\texttt{data\_range} \\ \hline
         PSNR / SSIM backend    & Not specified             & Custom PyTorch reimplementations of LION reference & Differentiability for ADMM step \\ \hline
         HaarPSI backend        & Not used                  & \texttt{piq} library & Compatible with $\mu$-unit inputs \\ \hline
-        Policy $\sigma$ range  & Not stated                & $[1, 5]$ & Calibration for natural DRUNet \\ \hline
+        Policy $\sigma$ range  & Not stated                & $[1, 5]$ & Natural DRUNet calibration\\ \hline
         Policy $\mu$ range     & Not stated                & $[10, 100]$ & Effective range post-gradient-normalisation \\ \hline
         Denoiser training data & BSD400 natural images     & Same (\texttt{run\_04}), LIDC (\texttt{run\_11}) & In-domain extension \\ \hline
         Denoiser loss          & $L_1$                     & MSE  & PSNR-aligned \\ \hline
