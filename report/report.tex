@@ -1,0 +1,184 @@
+\documentclass[11pt,a4paper,twoside]{report}
+% append option ",openright" after "twoside" if you prefer each chapter
+% to start on a recto (odd-numbered) page in a double-sided printout
+\usepackage[pdfborder={0 0 0}]{hyperref}
+\usepackage[vmargin=20mm,hmargin=25mm]{geometry}
+\usepackage{graphicx}
+\usepackage{parskip}
+\setlength{\parskip}{0.4\baselineskip}
+\setlength{\parindent}{0pt}
+\raggedbottom
+\usepackage[skip=3pt, belowskip=0pt, font=small, labelfont=bf]{caption}
+\usepackage{setspace}
+\usepackage{refcount}
+\usepackage{upquote}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsthm}
+\usepackage{bm}
+\usepackage{natbib}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{cleveref}
+\usepackage{gensymb}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage{float}
+\usepackage{array}
+\usepackage{enumitem}       % for [label=(\roman*)] in Chapter 1
+\newtheorem{remark}{Remark}[chapter]
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+%TC:macro \caption [ignore]
+
+% ---------- PROJECT DETAILS ----------
+\title{Reproducing a Tuning-Free Plug-and-Play algorithm for Sparse-View CT}
+\author{Emilia Zabrzanska}
+\date{July 2026}
+\newcommand{\college}{Magdalene College}
+\newcommand{\coursethe}{Master of Philosophy in Data Intensive Science}
+
+\begin{document}
+
+% =========================
+% COVER PAGE
+% =========================
+\begin{titlepage}
+\makeatletter
+
+% ── Logos positioned absolutely in the top corners ──
+\begin{tikzpicture}[remember picture, overlay]
+    % University logo — top left
+    \node[anchor=north west, inner sep=0pt]
+        at ([xshift=2.5cm, yshift=-2cm]current page.north west)
+        {\includegraphics[height=1.5cm]{logos/university.png}};
+    % DiS course logo — top right
+    \node[anchor=north east, inner sep=0pt]
+        at ([xshift=-2.5cm, yshift=-1.5cm]current page.north east)
+        {\includegraphics[height=2.5cm]{logos/course.jpeg}};
+\end{tikzpicture}
+
+\vspace{4cm}
+
+\begin{center}
+{\LARGE \textbf{\@title}}\\[1.5cm]
+
+{\large Research project report presented by}\\[0.3cm]
+{\Large \textbf{\@author}}\\[2cm]
+
+{\large \textbf{Department}\\
+Department of Physics (Cavendish Laboratory)\\[0.8cm]
+
+\textbf{Degree}\\
+\coursethe}\\[4cm]
+
+\includegraphics[height=3cm]{logos/college.jpg}\\[0.5cm]
+
+{\large \college\\
+University of Cambridge\\
+\@date}
+\end{center}
+
+\vfill
+
+\begin{center}
+Submitted in partial fulfillment of the requirements for the\\
+\coursethe
+\end{center}
+
+\makeatother
+\end{titlepage}
+
+% =========================
+% DECLARATION
+% =========================
+%TC:ignore
+\chapter*{Declaration}
+\thispagestyle{empty}
+
+I, Emilia Zabrzanska of \college, being a candidate for the \coursethe, hereby declare that this report and the work described in it are my own work, except where specified below and in the AI/LLM usage declaration (\Cref{sec:ai-usage}).
+
+This report has a word count of approximately \textbf{7{,}000} words, counted in line with the course's word-count policy, including the abstract, tables, footnotes, and appendices, and excluding the table of contents, figure and table captions, lists of figures and tables, equations, the bibliography, the acknowledgements, and the auto-generation usage appendix (\Cref{sec:ai-usage}).
+
+The reproduction of the Tuning-Free Plug-and-Play algorithm~\citep{Wei2022TFPnP} was carried out within the LION toolbox, developed by the Cambridge Image Analysis group. A pull request contributing improvements to LION's FBPConvNet implementation was submitted as part of this work (PR \#184 on the CambridgeCIA/LION repository).
+
+\vspace{1cm}
+
+\noindent Signed: Emilia Zabrzanska
+
+\noindent Date: July 2026
+%TC:endignore
+
+% =========================
+% ACKNOWLEDGEMENTS
+% =========================
+%TC:ignore
+\chapter*{Acknowledgements}
+\thispagestyle{empty}
+% content later
+%TC:endignore
+
+% =========================
+% ABSTRACT
+% =========================
+\begin{abstract}
+Sparse-view computed tomography (CT) reduces patient radiation dose by acquiring fewer projection angles, at the cost of creating a more ill-posed reconstruction problem. The Tuning-Free Plug-and-Play (TFPnP) method of~\citet{Wei2022TFPnP} addresses this by using reinforcement learning to select ADMM hyperparameters automatically. This project reproduces TFPnP within the LION toolbox, targeting 30-view parallel-beam CT on the LIDC-IDRI dataset with the natural-image DRUNet as a prior. The reproduction achieves $27.27$\,dB PSNR at $5\%$
+sinogram noise, an improvement of $+2.96$\,dB over hand-calibrated Fixed PnP-ADMM, confirming the paper's central claim about the advantage of learned hyperparameter policies.
+
+The evaluation also reveals a partial reversal of the paper's TFPnP/FBPConvNet baseline comparison, as with FBPConvNet trained end-to-end on the target CT domain, it outperforms TFPnP by $+1.31$\,dB at $5\%$ noise, but TFPnP overtakes on all three metrics at $10\%$ noise, revealing the noise-robustness advantage of the iterative plug-and-play architecture. An extension replacing the natural-image DRUNet with a CT-specific variant produces a $+0.71$ to $+1.98$\,dB improvement in Fixed PnP-ADMM, growing with noise, but a full TFPnP policy retrain against the CT-DRUNet was destabilised by RL training difficulties that future work is needed to resolve. All divergences from the paper, including choices left underspecified, are consolidated in a single table with appropriate justifications. The reproduction is released as a working Python package integrated with LION, together with an upstream contribution fixing a bug in the toolbox's FBPConvNet baseline.
+\end{abstract}
+
+\newpage
+\pagenumbering{roman}
+\setcounter{page}{0}
+\pagestyle{plain}
+\linespread{1.3}\selectfont
+\tableofcontents
+\listoffigures
+\listoftables
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\pagestyle{headings}
+
+% ==============================================================================
+% Chapter 1: Introduction
+% ==============================================================================
+\input{chapters/01_introduction}
+
+% ==============================================================================
+% Chapter 2: Background and Related Work
+% ==============================================================================
+\input{chapters/02_background}
+
+% ==============================================================================
+% Chapter 3: Design and Implementation
+% ==============================================================================
+\input{chapters/03_design_and_implementation}
+
+% ==============================================================================
+% Chapter 4: Evaluation
+% ==============================================================================
+\input{chapters/04_evaluation}
+
+% ==============================================================================
+% Chapter 5: Discussion
+% ==============================================================================
+\input{chapters/05_discussion}
+
+% ==============================================================================
+% Chapter 6: Conclusion
+% ==============================================================================
+\input{chapters/06_conclusion}
+
+% ==============================================================================
+% Appendix
+% ==============================================================================
+\appendix
+\input{chapters/appendix}
+
+\bibliographystyle{plainnat}
+\bibliography{bibliography}
+
+\end{document}

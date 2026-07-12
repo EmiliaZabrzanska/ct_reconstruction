@@ -1,0 +1,51 @@
+% ============================================================
+%  Chapter 1: Introduction
+% ============================================================
+\chapter{Introduction}
+\label{chap:introduction}
+
+% ------------------------------------------------------------
+%  Paragraph 1 — CT clinical motivation
+% ------------------------------------------------------------
+Computed tomography (CT) is one of the most widely used diagnostic imaging modalities in modern medicine, providing detailed three-dimensional views of internal anatomy. It is not, however, without cost, as CT scans use ionising X-ray radiation that can be harmful with repeated exposure. Reducing radiation dose while preserving diagnostic image quality is therefore a central concern in clinical practice. The most common strategies are low-dose CT and, the focus of this project, sparse-view CT, where fewer projection angles are acquired per scan to reduce total exposure. The resulting inverse problem is more ill-posed, since with fewer measurements, the reconstruction is under-determined, and standard analytical inversion produces prominent streak artefacts.
+
+% ------------------------------------------------------------
+%  Paragraph 2 — Classical to learned methods
+% ------------------------------------------------------------
+Classical sparse-view reconstruction relies on filtered backprojection (FBP) or iterative methods with hand-crafted regularisers such as total variation (TV). FBP is fast but produces the streak artefacts already mentioned, and TV mitigates these but imposes a piecewise-constant prior, penalising differences between neighbouring pixels. Subtle intensity variations are therefore treated the same as noise and get smoothed into uniform patches, losing fine anatomical detail. Learned methods now dominate reconstruction benchmarks, and
+fall into two main families. Two-step reconstruction methods such as FBPConvNet~\citep{Jin2017FBPConvNet, Biguri2025LowDose} take the FBP reconstruction as input and train a network to refine it into a clean image. Plug-and-play (PnP) methods combine iterative optimisation frameworks such as ADMM with learned image denoisers, allowing a single denoiser to serve as a prior for any inverse problem. The trade-off is that the denoising strength $\sigma$ and the penalty parameter $\mu$ must be tuned carefully per iteration and per image, or performance degrades quickly.
+
+% ------------------------------------------------------------
+%  Paragraph 3 — TFPnP as reproduction target
+% ------------------------------------------------------------
+The Tuning-Free Plug-and-Play method (TFPnP) of~\citet{Wei2022TFPnP} addresses this burden by formulating the choice of $\sigma$ and $\mu$ as a reinforcement learning problem, where a policy network is trained to select these hyperparameters automatically at each ADMM iteration, based on the current state of the reconstruction. Once
+trained, the policy is able to operate without any per-problem tuning at inference time. \citet{Wei2022TFPnP} report state-of-the-art results on several inverse imaging problems including sparse-view CT, where TFPnP outperforms both classical baselines and the end-to-end FBPConvNet. Reproducing these results in an independent implementation, and testing their sensitivity to methodological choices left underspecified in the paper, form the primary focus of this project.
+
+% ------------------------------------------------------------
+%  Paragraph 4 — This project's contribution
+% ------------------------------------------------------------
+This project reproduces TFPnP from scratch within the LION toolbox~\citep{Biguri2024LION}, a Python framework for AI-driven inverse imaging developed at the University of Cambridge. The reproduction is evaluated on the LIDC-IDRI clinical lung CT dataset~\citep{Armato2011LIDC}, using the DRUNet denoiser~\citep{zhang2021plug}. Throughout the project, several implementation choices affecting the final result were identified and documented. Two extensions were also carried out, including a domain-adapted CT-DRUNet and a set of reward-shaping ablations to test alternative RL reward signals. The reproduction reveals both the practical strengths of TFPnP's approach, particularly its robustness across noise levels, as well as its sensitivities to hyperparameter and training-data choices that the original paper does not discuss, including how the choice of RL action ranges interacts with training stability, and how an in-domain denoiser affects reconstruction quality within a plug-and-play pipeline.
+
+% ============================================================
+%  Section 1.1 — Contributions
+% ============================================================
+\section{Contributions}
+\label{sec:contributions}
+
+The contributions of this project are as follows.
+\begin{enumerate}[label=(\roman*)]
+    \item A faithful reproduction of the TFPnP method within the LION toolbox, targeting 30-view parallel-beam          sparse-view CT with the natural-image DRUNet as a prior.
+    \item A finding that domain-specific FBPConvNet training substantially changes the ranking between two-step
+          reconstruction and plug-and-play methods relative to the paper's out-of-domain comparison, with FBPConvNet leading at 5\% noise and TFPnP overtaking on all three metrics at 10\% noise.
+    \item A CT-specific DRUNet variant that improves reconstruction quality by $0.71$--$1.98$\,dB PSNR over the         natural-image DRUNet in Fixed PnP-ADMM, with the advantage growing as noise increases.
+    \item A reward-shaping ablation testing four alternative RL reward signals (SSIM, HaarPSI, and mixed                rewards), showing that the paper's default PSNR reward remains a defensible choice.
+    \item An upstream contribution to the LION toolbox in the form of pull request \#184, fixing a bug in the           FBPConvNet integration.
+\end{enumerate}
+
+% ============================================================
+%  Section 1.2 — Report structure
+% ============================================================
+\section{Report structure}
+\label{sec:structure}
+
+\Cref{chap:background} introduces the relevant technical background and positions TFPnP within the wider landscape of sparse-view CT reconstruction methods. \Cref{chap:implementation} describes the reproduction's design and implementation in detail, including all deviations from the paper. \Cref{chap:results} presents the empirical evaluation, and \Cref{chap:discussion} interprets the findings. \Cref{chap:conclusion} summarises the project and outlines directions for future work, and \Cref{app:supplementary} provides supplementary material covering compute infrastructure, the full run matrix, and repository pointers.

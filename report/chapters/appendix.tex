@@ -1,0 +1,132 @@
+% ============================================================
+%  Appendix: Supplementary Material
+% ============================================================
+\chapter{Supplementary Material}
+\label{app:supplementary}
+
+% ============================================================
+%  A.1 — Compute infrastructure
+% ============================================================
+\section{Compute infrastructure}
+\label{sec:compute-appendix}
+
+All experiments were run on the Cambridge Service for Data Driven Discovery (CSD3) HPC cluster, using GPUs on the \texttt{ampere} partition. GPU access was allocated through a single \texttt{MPHIL-DIS-SL2-GPU} SLURM account, which imposed a cap on the number of ablation and rescue runs that could fit within the project timeline. All jobs were managed through SLURM batch scripts, against a project-specific conda environment (\texttt{mphil\_ct}, Python 3.11) providing the LION toolbox, PyTorch, tomosipo, and supporting packages.
+
+Total compute across all experiments was approximately 290 GPU-hours: ${\sim}28$\,h per TFPnP training run across ten completed runs, plus ${\sim}2.5$\,h for CT-DRUNet training, ${\sim}0.5$\,h for FBPConvNet training, and the remainder split between hyperparameter sweeps and evaluation. A batched SLURM evaluation script (\texttt{slurm/full\_eval\_batch.sh}) reproduces all reported metrics from saved checkpoints in a single job.
+
+% ============================================================
+%  A.2 — Run matrix
+% ============================================================
+\section{Run matrix}
+\label{sec:run-matrix}
+
+\Cref{tab:run-matrix} summarises all eleven TFPnP training runs carried out during the project. \texttt{run\_04} is the canonical reproduction run reported throughout Chapter~\ref{chap:results}, with all other runs varying one aspect at a time relative to it.
+
+\begin{table}[H]
+    \centering
+    \footnotesize
+    \caption{Summary of TFPnP training runs. Runs 04--12 use 250 LIDC
+    patients, 80 epochs, and the paper's default hyperparameters
+    unless noted.}
+    \label{tab:run-matrix}
+    \begin{tabular}{L{2.2cm}L{5.5cm}L{5.5cm}}
+        \toprule
+        Run & Change vs.\ \texttt{run\_04} & Rationale \\
+        \midrule
+        \texttt{run\_01} & 20 patients, 20 epochs
+                        & Notebook-development sanity check that the pipeline runs and RL training converges
+                        \\ \hline
+        \texttt{run\_02} & 100 patients, 50 epochs
+                        & Scaling test to confirm behaviour holds beyond the 20-patient setting
+                        \\ \hline
+        \texttt{run\_03} & Full LIDC split (3300 slices), 5 epochs
+                        & Test whether more patients with fewer epochs improves policy quality at similar total training budget
+                        \\ \hline
+        \texttt{run\_04} & Main run: natural-image DRUNet, PSNR reward, $\sigma \in [1, 5]$, $\mu \in [10, 100]$
+                        & Direct reproduction of~\citet{Wei2022TFPnP} \\ \hline
+        \texttt{run\_05} & $\sigma$ floor lowered from $1.0$ to $0.5$
+                        & Test whether weaker denoising lets the policy fine-tune reconstructions in later ADMM iterations
+                        \\ \hline
+        \texttt{run\_06} & $m = 3$, $N = 10$ (total ADMM steps unchanged)
+                        & Test sensitivity to the paper's $m = 5$, $N = 6$ inner-outer split
+                        \\ \hline
+        \texttt{run\_07} & Mixed PSNR/SSIM reward
+                        & Test whether a joint reward improves perceptual quality (\Cref{sec:reward-shaping})
+                        \\ \hline
+        \texttt{run\_08} & Mixed PSNR/HaarPSI reward
+                        & Test HaarPSI-based reward against~\citet{breger2025study}'s motivation
+                        \\ \hline
+        \texttt{run\_09} & SSIM-only reward
+                        & Isolate the structural-similarity signal
+                        \\ \hline
+        \texttt{run\_10} & HaarPSI-only reward
+                        & Isolate the perceptual-similarity signal
+                        \\ \hline
+        \texttt{run\_11} & CT-DRUNet denoiser; $\sigma \in [1, 15]$; $\mu \in [5, 50]$
+                        & Test in-domain denoiser inside the full RL pipeline
+                        \\ \hline
+        \texttt{run\_12} & CT-DRUNet; narrower action range; longer $\pi_2$ warmup
+                        & Rescue attempt for \texttt{run\_11}, prepared but not submitted before the CSD3 outage; superseded by the recalibrated-denoiser approach of~\Cref{sec:corrections}
+                        \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ============================================================
+%  A.3 — Repository and artefacts
+% ============================================================
+\section{Repository and artefacts}
+\label{sec:repo}
+
+The full source for the reproduction is hosted at \url{https://gitlab.developers.cam.ac.uk/phy/data-intensive-science-mphil/assessments/projects/eaz21}.
+
+The repository is organised as follows: 
+
+\begin{itemize}
+    \item \texttt{src/ct\_tfpnp/} contains the Python package (policy network, value network, ADMM environment, denoiser wrappers, training loop, and baseline reconstructors)
+    \item \texttt{scripts/} contains the training and evaluation scripts (\texttt{train\_tfpnp.py}, \texttt{train\_drunet\_ct.py}, \texttt{train\_fbpconvnet.py}, and the plotting and evaluation utilities). 
+    \item \texttt{slurm/} contains one SLURM launcher per training run (\texttt{train\_tfpnp\_02.sh} through \texttt{train\_tfpnp\_12.sh}) plus the baseline training and batch evaluation scripts. 
+    \item \texttt{notebooks/} contains the development narrative NB01--NB12, covering tomosipo and CT physics fundamentals, LION exploration, PnP-ADMM development, TFPnP paper analysis, policy and environment prototyping, the full training pipeline, baselines, and the CT denoiser extension. 
+    \item \texttt{data/} contains a small LIDC subset for local smoke tests, with the full dataset loaded through LION's dataloader on CSD3. 
+    \item \texttt{results/} contains the metrics CSVs, but per-run checkpoints are on CSD3 due to size.
+    \item \texttt{figures/} contains the plots for each run and each notebook chapter. 
+    \item \texttt{report/} contains the LaTeX source, bibliography, and compiled PDF for this report.
+\end{itemize}
+
+Model checkpoints are too large to commit to the repository and live on CSD3, available on request:
+
+\begin{itemize}
+    \item Natural-image DRUNet weights, pretrained
+          from~\citet{zhang2021plug}
+          (\texttt{results/baselines/drunet\_gray.pth}).
+    \item CT-DRUNet best checkpoint
+          (\texttt{results/baselines/drunet\_ct/drunet\_ct\_best.pth}).
+    \item FBPConvNet checkpoint
+          (\texttt{results/baselines/fbpconvnet/fbpconvnet\_5pct\_e80.pth}).
+    \item TFPnP canonical checkpoint
+          (\texttt{results/learned/run\_04\_pat\_250\_e80/best.pt}).
+\end{itemize}
+
+The upstream LION pull request (\#184) contributing a fix for the FBPConvNet integration is available at \url{https://github.com/CambridgeCIA/LION/pull/184}.
+
+% ============================================================
+%  A.4 — AI/LLM usage declaration
+%  Excluded from word count per course policy §4.3.2
+% ============================================================
+%TC:ignore
+\section{AI/LLM usage}
+\label{sec:ai-usage}
+
+Large language models (primarily Gemini and Claude) were used to support this project in the following areas:
+
+\begin{itemize}
+    \item \textbf{Plotting boilerplate.} Matplotlib scaffolds for training curves, reconstruction galleries, and       sensitivity sweeps.
+    \item \textbf{Library usage.} Working out calling conventions for alignment with LION.
+    \item \textbf{Debugging.} The CT-DRUNet calibration mismatch (\Cref{sec:ct-drunet}), the \texttt{run\_11}           critic explosion (\Cref{sec:run11}), and unit-scale mismatches between LION and TorchRadon                   (\Cref{sec:admm-gradient}).
+    \item \textbf{Docstrings and documentation.} Function-level docstrings for \texttt{ct\_tfpnp} and generation        of documentation using Sphinx.
+    \item \textbf{Report review.} Redundancy checks, cross-referencing and typo fixes.
+    \item \textbf{Cross-checking against the paper.} Comparing implementation choices with~\citet{Wei2022TFPnP}         and consolidating differences into~\Cref{tab:implementation-differences}.
+\end{itemize}
+
+All model output was reviewed and, where used, edited before being committed to the repository or incorporated into this report. No model output was accepted without verification against the source paper, the LION toolbox, or empirical results from the reproduction itself. The core experimental design, hyperparameter choices, framing of the findings, and interpretation of the results are my own.
+%TC:endignore
