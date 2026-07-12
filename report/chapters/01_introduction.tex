@@ -18,8 +18,8 @@ fall into two main families. Two-step reconstruction methods such as FBPConvNet~
 % ------------------------------------------------------------
 %  Paragraph 3 — TFPnP as reproduction target
 % ------------------------------------------------------------
-The Tuning-Free Plug-and-Play method (TFPnP) of~\citet{Wei2022TFPnP} addresses this burden by formulating the choice of $\sigma$ and $\mu$ as a reinforcement learning problem, where a policy network is trained to select these hyperparameters automatically at each ADMM iteration, based on the current state of the reconstruction. Once
-trained, the policy is able to operate without any per-problem tuning at inference time. \citet{Wei2022TFPnP} report state-of-the-art results on several inverse imaging problems including sparse-view CT, where TFPnP outperforms both classical baselines and the end-to-end FBPConvNet. Reproducing these results in an independent implementation, and testing their sensitivity to methodological choices left underspecified in the paper, form the primary focus of this project.
+The Tuning-Free Plug-and-Play method (TFPnP) of~\citet{Wei2022TFPnP} addresses this by formulating the choice of $\sigma$ and $\mu$ as a reinforcement learning problem, where a policy network is trained to select hyperparameters automatically at each ADMM iteration, based on the current state of the reconstruction. Once
+trained, the policy is able to operate without any per-problem tuning at inference time. \citet{Wei2022TFPnP} report state-of-the-art results on several inverse imaging problems including sparse-view CT, where TFPnP outperforms both classical baselines and the FBPConvNet. Reproducing these results in an independent implementation, and testing their sensitivity to methodological choices left underspecified in the paper, form the primary focus of this project.
 
 % ------------------------------------------------------------
 %  Paragraph 4 — This project's contribution
@@ -48,4 +48,4 @@ The contributions of this project are as follows.
 \section{Report structure}
 \label{sec:structure}
 
-\Cref{chap:background} introduces the relevant technical background and positions TFPnP within the wider landscape of sparse-view CT reconstruction methods. \Cref{chap:implementation} describes the reproduction's design and implementation in detail, including all deviations from the paper. \Cref{chap:results} presents the empirical evaluation, and \Cref{chap:discussion} interprets the findings. \Cref{chap:conclusion} summarises the project and outlines directions for future work, and \Cref{app:supplementary} provides supplementary material covering compute infrastructure, the full run matrix, and repository pointers.
+\Cref{chap:background} introduces the relevant technical background and positions TFPnP within the wider landscape of sparse-view CT reconstruction methods. \Cref{chap:implementation} describes the reproduction's design and implementation, including all deviations from the paper. \Cref{chap:results} presents the empirical evaluation, and \Cref{chap:discussion} interprets the findings. \Cref{chap:conclusion} summarises the project and outlines directions for future work, and \Cref{app:supplementary} provides supplementary material and an auto-generation usage declaration.

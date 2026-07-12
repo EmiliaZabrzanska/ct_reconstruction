@@ -12,18 +12,18 @@ This chapter provides the technical background needed to understand the reproduc
 \section{Sparse-view CT}
 \label{sec:sparse-view-ct}
 
-CT reconstruction aims to recover an internal image $x$ of a patient from a set of X-ray measurements $y$ taken at different angles around the body, modelled by the forward equation
+CT reconstruction aims to recover an internal image $x$ from a set of X-ray measurements $y$ taken at different angles around the body, modelled by the forward equation
 
 \begin{equation}
     y = A x + \epsilon
     \label{eq:ct_forward}
 \end{equation}
 
-where $A$ is the forward operator modelling the X-ray acquisition and $\epsilon$ is measurement noise, and the exact form of $A$ depends on the scan geometry. Under the parallel-beam geometry used in this project, $A$ is the discrete Radon transform, mapping the image to its line integrals along parallel rays at each projection angle.
+where $A$ is the forward operator modelling the X-ray acquisition and $\epsilon$ is measurement noise, and the exact form of $A$ depends on the scan geometry. For the parallel-beam geometry used in this project, $A$ is the discrete Radon transform, mapping the image to its line integrals along parallel rays at each projection angle.
 
-In a full-view acquisition, $x$ can be recovered accurately by inverting $A$ analytically using filtered backprojection (FBP), but in sparse-view conditions, the number of projection angles is reduced, under-sampling the sinogram along ray directions and producing streak artefacts in the FBP reconstruction, which are visible as diagonal or radial patterns aligned with the missing projection angles. \Cref{fig:sparse_view_illustration} illustrates the effect. 
+In a full-view acquisition, $x$ can be recovered by inverting $A$ analytically using filtered backprojection (FBP), but in sparse-view conditions, the sinogram is under-sampled along ray directions and produces streak artefacts in the FBP reconstruction, which are visible as diagonal or radial patterns aligned with the missing projection angles. \Cref{fig:sparse_view_illustration} illustrates the effect. 
 
-Because the inverse problem is under-determined under sparse-view conditions, additional constraints, or prior information about what images should look like, are required to recover a high-quality reconstruction. The choice of prior is what distinguishes the reconstruction methods reviewed in the rest of this chapter.
+Because the inverse problem is under-determined, additional constraints or prior information about what images should look like are required to recover high-quality reconstructions. The choice of prior distinguishes the reconstruction methods reviewed in the rest of this chapter.
 
 % ------------------------------------------------------------
 %  Figure 2.1: Sparse-view CT problem illustration
@@ -41,9 +41,9 @@ Because the inverse problem is under-determined under sparse-view conditions, ad
 \section{Classical reconstruction}
 \label{sec:classical-ct}
 
-Filtered backprojection (FBP) is the standard analytical method for CT reconstruction, applying a ramp filter in the frequency domain to compensate for the smoothing effect of backprojection. As introduced above, FBP produces severe streak artefacts under sparse-view conditions because the inversion problem becomes ill-posed.
+Filtered backprojection (FBP) is the standard analytical method for CT reconstruction, applying a ramp filter in the frequency domain to compensate for the smoothing effect of backprojection. As introduced above, FBP produces streak artefacts under sparse-view conditions because the inversion problem becomes ill-posed.
 
-Total variation (TV) regularisation is the standard iterative baseline for sparse-view reconstruction, formulating the inverse problem as the minimisation of a data-fidelity term together with a TV penalty that encourages piecewise-constant images. TV performs well on images with sharp boundaries and smooth regions, but its prior tends to produce cartoon-like reconstructions in which fine anatomical detail is lost.
+Total variation (TV) regularisation is the standard iterative baseline for sparse-view reconstruction, formulating the inverse problem as the minimisation of a data-fidelity term together with a TV penalty encouraging piecewise-constant images. TV performs well on images with sharp boundaries and smooth regions, but its prior tends to produce cartoon-like reconstructions where fine anatomical detail is lost.
 
 % ============================================================
 %  Section 2.3 — Two-step reconstruction methods
@@ -53,7 +53,7 @@ Total variation (TV) regularisation is the standard iterative baseline for spars
 
 Two-step reconstruction methods~\citep{Biguri2025LowDose} take an analytical reconstruction such as FBP as input and train a neural network to refine it into a clean image. Their main advantage is inference speed, as a single forward pass produces a reconstruction almost instantly once the network is trained. The main disadvantage is that the trained network is specialised to the conditions seen during training, and may fail to generalise outside them.
 
-FBPConvNet~\citep{Jin2017FBPConvNet} is the canonical example in this family. It applies a U-Net to a sparse-view FBP reconstruction, mapping it to a clean full-view reconstruction. Taking the FBP reconstruction as input, rather than the raw sinogram, allows the network to operate in the image domain and avoids the need to learn
+FBPConvNet~\citep{Jin2017FBPConvNet} is the method used in this project, and applies a U-Net to a sparse-view FBP reconstruction, mapping it to a clean full-view reconstruction. Taking the FBP reconstruction as input, rather than the raw sinogram, allows the network to operate in the image domain and avoids the need to learn
 the physics of the inverse problem.
 
 % ============================================================
@@ -62,7 +62,7 @@ the physics of the inverse problem.
 \section{Plug-and-play priors and ADMM}
 \label{sec:pnp-admm}
 
-Plug-and-play (PnP) methods combine iterative optimisation with learned denoisers. Regularised reconstruction combines a data fidelity term measuring how well the reconstruction matches the measurements, and a prior term $R(x)$ encoding prior knowledge about what images should look like. This is known as the variational regularisation (VR) framework, or equivalently the maximum a posteriori (MAP) estimator under a Bayesian formulation, where the data-fidelity term corresponds to the negative log-likelihood and $R(x)$ to the negative log-prior.
+Plug-and-play (PnP) methods combine iterative optimisation with learned denoisers. Regularised reconstruction combines a data fidelity term measuring how well the reconstruction matches the measurements, and a prior term $R(x)$ encoding prior knowledge about what images should look like. This is known as the variational regularisation (VR) framework, or equivalently the maximum a posteriori (MAP) estimator under a Bayesian formulation.
 
 \begin{equation}
     x^* = \arg\min_x \frac{1}{2}\|Ax - y\|^2 + \lambda R(x)
@@ -73,7 +73,7 @@ The parameter $\lambda$ balances the two objectives, and common choices for $R(x
 
 The Alternating Direction Method of Multipliers (ADMM) is a standard algorithm for solving~\Cref{eq:regularised_recon}, splitting the problem into three simpler sub-problems that are solved in turn, with an $x$-step applying the prior (a denoising operation), a $z$-step enforcing data fidelity, and a $u$-step tracking the disagreement between $x$ and $z$ across iterations. A penalty parameter $\mu$ controls how strongly $x$ and $z$ are coupled.
 
-The plug-and-play insight is that the $x$-step reduces to a denoising problem, so rather than solving it exactly, it can be replaced by any denoiser $D_\sigma$, where $\sigma$ controls the denoising strength. The denoiser then acts as an implicit prior, and no explicit form for $R(x)$ is required. The same denoiser can be reused across different inverse problems by pairing it with the appropriate data-fidelity term. The remaining difficulty is that both $\sigma$ and $\mu$ must be chosen well, and typically require tuning per iteration and per problem instance, which is the problem TFPnP addresses.
+The plug-and-play insight is that the $x$-step reduces to a denoising problem, so rather than solving it exactly, it can be replaced by any denoiser $D_\sigma$, where $\sigma$ controls the denoising strength. The denoiser then acts as an implicit prior, and no explicit form for $R(x)$ is required. The same denoiser can be reused across different inverse problems by pairing it with the appropriate data-fidelity term. The remaining difficulty is that both $\sigma$ and $\mu$ must be chosen well, and typically require tuning per iteration and per image, which is the problem that TFPnP addresses.
 
 % ============================================================
 %  Section 2.5 — DRUNet
@@ -86,7 +86,7 @@ DRUNet~\citep{zhang2021plug} is a residual U-Net designed for plug-and-play prio
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{../figures/other/drunet _architecture.pdf}
-    \caption{DRUNet architecture. The noisy image and constant-valued noise map $\sigma$ are concatenated along the channel dimension and passed through a head convolution, three encoder stages of two residual blocks each (with strided convolutions between stages for downsampling), a four-block bottleneck, three decoder stages of two residual blocks each (with transposed convolutions between stages for upsampling), and a tail convolution. Skip connections carry encoder features directly to the corresponding decoder stage. Adapted from~\citet{zhang2021plug}.}
+    \caption{DRUNet architecture. The noisy image and constant-valued noise map $\sigma$ are concatenated along the channel dimension and passed through a head convolution, three encoder stages of two residual blocks each, a four-block bottleneck, three decoder stages of two residual blocks each, and a tail convolution. Skip connections carry encoder features directly to the corresponding decoder stage. Adapted from~\citet{zhang2021plug}.}
     \label{fig:drunet-architecture}
 \end{figure}
 
@@ -95,11 +95,11 @@ DRUNet is trained on 400 natural images from BSD400, with additive Gaussian nois
 % ============================================================
 %  Section 2.6 — Tuning-free hyperparameter control with RL
 % ============================================================
-\section{Tuning-free hyperparameter control with reinforcement learning}
+\section{Tuning-free hyperparameter control with RL}
 \label{sec:rl-control}
 
-TFPnP~\citep{Wei2022TFPnP} treats the selection of $\sigma$ and $\mu$ across ADMM iterations as a reinforcement learning problem. At each iteration, a policy network observes the current ADMM state (the variables $x$, $z$, $u$, the noise level, and iteration progress) and outputs both a $(\sigma, \mu)$ prediction for the next $m$ ADMM steps and a decision on whether to terminate. The policy is rewarded at each step by the PSNR gain minus a small constant penalty ($\eta = 0.05$), discourages the policy from taking too many steps. The policy is trained once on a large image dataset, after which no further tuning is required at inference time.
+TFPnP~\citep{Wei2022TFPnP} treats the selection of $\sigma$ and $\mu$ across ADMM iterations as a reinforcement learning problem. At each iteration, a policy network observes the current ADMM state (the variables $x$, $z$, $u$, noise level, and iteration progress) and outputs both a $(\sigma, \mu)$ prediction for the next $m$ ADMM steps and a decision on whether to terminate. The policy is rewarded at each step by the PSNR gain minus a small constant penalty ($\eta = 0.05$), discouraging the policy from taking too many steps. The policy is trained once on a large image dataset, after which no further tuning is required at inference time.
 
-Two sub-policies are trained. The discrete termination policy $\pi_1$ uses REINFORCE, a policy-gradient method that reinforces actions leading to higher rewards. The continuous parameter policy $\pi_2$ uses deep deterministic policy gradient (DDPG), an actor-critic method backpropagated through the differentiable ADMM environment. Once trained, the policy produces $\sigma$ and $\mu$ automatically at inference.
+Two sub-policies are also trained, with the discrete termination policy $\pi_1$ using REINFORCE, a policy-gradient method that reinforces actions leading to higher rewards, and the continuous parameter policy $\pi_2$ using deep deterministic policy gradient (DDPG), an actor-critic method backpropagated through the differentiable ADMM environment. Once trained, the policy produces $\sigma$ and $\mu$ automatically.
 
 A notable limitation of~\citet{Wei2022TFPnP}'s evaluation is that the policy and denoiser are both trained on natural images (PASCAL VOC and BSD400 respectively) and evaluated on medical images (CT slices from the COVID-19 CT dataset), making the entire pipeline out-of-domain relative to the target application. This project evaluates TFPnP against an in-domain FBPConvNet on the LIDC-IDRI dataset, and extends TFPnP with a CT-specific DRUNet to assess whether an in-domain denoiser improves reconstruction quality.
